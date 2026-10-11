@@ -85,11 +85,14 @@ test('A. file spec transform 均为函数且来自收口导出（无内联孤儿
   const adapterExports = new Set(Object.values(adapters).filter((v) => typeof v === 'function'));
   const loaderExports = new Set(Object.values(loaderIsolation).filter((v) => typeof v === 'function'));
   const fileSpecs = PATCH_SPECS.filter((s) => s.kind === 'file');
+  // 46 = 45 ＋ appboot-bootstrap-singleton（2026-10-11，macOS 路径大小写导致
+  // dsh-app-boot 被 ESM 加载两次、模块级 WeakMap 分裂 → profile reload 必抛 →
+  // 设置写入全线失败的功能性修复，须进 payload 故入 cli:true 计数）。
   // 45 = 43 ＋ loader-import-failure-report ＋ prompt-admission-reason-report
   // （2026-10-10 两条「静默失败原文上身」诊断补丁，见 E 的 60 基线说明）。
   // 43 = 44（rc.2 重靶后的 file 型规格数）− image-send-fix（2026-10 随识图插件
   // 整体退役；64 项总盘中 root 15 + file 43 = 58，另见 E）。
-  assert.equal(fileSpecs.length, 45, `file spec 应有 45 个，得 ${fileSpecs.length}`);
+  assert.equal(fileSpecs.length, 46, `file spec 应有 46 个，得 ${fileSpecs.length}`);
   for (const spec of fileSpecs) {
     assert.equal(typeof spec.transform, 'function', `${spec.id} 缺 transform`);
     assert.ok(
@@ -204,12 +207,17 @@ test('E. order 全局唯一、组内升序、补丁间依赖序成立', () => {
   //   「只为已退役插件存在」一类；transform 与锚点常量同批从 patch-adapters 删除，
   //   靶常量 SESSION_CTRL_INDEX_PKG_REL 仍由 history-page-size 使用故保留。
   //   cli:true 计数不受影响（它是 cli:false）。
+  // 61 = 60 ＋ appboot-bootstrap-singleton（order 403）：dsh-app-boot 的
+  // bootstrapIncludes 提升为 globalThis 单例（2026-10-11 macOS 实机取证）——
+  // 壳 spawn 用 Contents/resources、loader 用 Contents/Resources，同一模块被
+  // ESM 判成两个实例各持一张 WeakMap，profile reload 取根 Include 落空即抛，
+  // 设置写入全线失败。功能主线补丁故 cli:true。
   // 60 = 58 ＋ loader-import-failure-report（order 148）＋ prompt-admission-reason-report
   // （order 150）：两条「静默失败原文上身」诊断补丁（2026-10-10，mac 端 9 插件
   // failed to load 与发送文件恒报 prompt rejected 两轮发布查不下去的直接原因——
   // rc.2 导入失败只进 cordis 内存环形缓冲、非核心条目不再抛 StartupError，真因
   // 三重静默）。均 cli:false，故 cli:true 计数不变。
-  assert.equal(PATCH_SPECS.length, 60, 'spec 总数应为 60');
+  assert.equal(PATCH_SPECS.length, 61, 'spec 总数应为 61');
   const orders = PATCH_SPECS.map((s) => s.order);
   assert.equal(new Set(orders).size, orders.length, 'order 必须全局唯一');
   const byId = Object.fromEntries(PATCH_SPECS.map((s) => [s.id, s]));
@@ -261,11 +269,13 @@ test('E3. device-auth 154 与 credentials-absent 153 相邻无干扰', () => {
   );
 });
 
-test('F. cli:true 恰为 26 项；failPolicy ∈ {warn,degrade}', () => {
+test('F. cli:true 恰为 27 项；failPolicy ∈ {warn,degrade}', () => {
   const cliSpecs = registry.getSpecsByCli();
+  // 27 = 26 ＋ appboot-bootstrap-singleton（2026-10-11）：设置写入全线失败的功能性
+  // 修复，必须进 payload 的 CLI 同步期，否则装机态无此补丁。
   // 26 = 28（上一基线）− atomic-write-orphan-lock − model-image-input（两条 rc.2 退役，
   // 见 E 的①–⑥）；token-meter-clamp / preset-seat-fix 早在 0.1.5-rc.1 同批退役。
-  assert.equal(cliSpecs.length, 26, 'cli:true 数量（含 skill-dirs-compat + pi-ai-4xx-dump + workspace-chip-label-hold + pi-ai Responses 工具名净化 + pi-ai 工具名 wire 中央收口 + pi-ai 配额耗尽不重试；atomic-write-orphan-lock / model-image-input / token-meter-clamp 已退役）');
+  assert.equal(cliSpecs.length, 27, 'cli:true 数量（含 skill-dirs-compat + pi-ai-4xx-dump + workspace-chip-label-hold + pi-ai Responses 工具名净化 + pi-ai 工具名 wire 中央收口 + pi-ai 配额耗尽不重试 + appboot-bootstrap-singleton；atomic-write-orphan-lock / model-image-input / token-meter-clamp 已退役）');
   for (const s of cliSpecs) assert.equal(s.cli, true);
   for (const spec of PATCH_SPECS) {
     assert.ok(

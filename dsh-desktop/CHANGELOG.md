@@ -19,7 +19,41 @@ DeepSeek Harness（dsh）的 Windows 桌面客户端：内置独立 Node 运行�
 
 ## [Unreleased]
 
-_（暂无未发布条目；v1.0.2 已于 2026-10-11 以 GitHub **预发布**形态发布，其内容见下方 `[1.0.2]` 段。）_
+### fix：macOS 上「任何设置都存不了」（引导页「开始设置」进不去 + 设置页全线不可存）
+
+- **根因不是设置写入链坏了，是 `dsh-app-boot` 被加载成两个模块实例**：
+  - macOS 壳 supervisor spawn 内核时拼的路径是 `Contents/resources`（小写 `r`，
+    `[supervisor] 内核 spawn:` 那行日志实证），而 loader 走磁盘真实目录
+    `Contents/Resources`（大写 `R`）。APFS 默认大小写不敏感（同一份文件），但
+    **ESM 模块缓存按 URL 字符串区分大小写** → 同一份 `dsh-app-boot` 被判定为两个
+    模块，各持一份模块级 `bootstrapIncludes` WeakMap。
+  - 于是 `mountRootInclude` 登记进「甲实例」的那张表，`reconcileProfilePatches` 在
+    「乙实例」里 `get` 必然落空 → 抛
+    `dsh: profile reload requires the root Include entry` → 被
+    `dsh-api-settings-controller` 包成 `settings/rejected` → **任何设置写入全失败**
+    （引导页与设置页一起，用户观感是「点开始设置进不去」+「未能保存设置，请重试。」
+    反复回滚 welcome）。
+  - 取证链每一步都有日志实证，非推断：前端 `diag5` 拿到 code=`settings/rejected`
+    但 details 只带 `{ ns }` → 宿主 `catch` 里打出原始 message → app-boot 埋探针
+    出现「`.set` 成功、`sameCtx=true`、`.get` 却 undefined」的 WeakMap 不可能局面 →
+    加模块随机指纹 + 打完整 `import.meta.url`，两实例现形。
+- **修法**（新增 `appboot-bootstrap-singleton` 补丁，`scripts/lib/appboot-singleton-patch.js`）：
+  - `bootstrapIncludes` 从模块级 WeakMap 提升为 **globalThis 上的单例**
+    （`globalThis.__dshBootstrapIncludes ??= new WeakMap()`），两实例共享一张表。
+  - 顺带把 `reconcile` 落空时的静默 `throw` 补一条 `[dsh-desktop-patch] profile-reload-miss`
+    日志，平时零噪音，只在真出问题时留痕，便于日后回归。
+  - 语义不变式：仍是 `WeakMap`、键仍是 `ctx` 对象、弱引用不泄漏、`get` 语义逐字不变；
+    修的是**存放位置**，不是数据结构。
+  - 取「数据侧兜住」而非「改壳 spawn 的大小写」：spawn argv 在 Tauri Rust 侧，改它要三平台
+    复验；且任何经符号链接 / profile fallback / agent overlay 落点的二次加载都会重演同样的
+    分裂，数据侧收口更稳、无平台面。
+- **归 runtime 组 + `cli:true`**（不是 guard 组）：这是功能主线而非出问题时才生效的兜底，
+  必须进 payload 的 CLI 同步期，否则装机态缺少该补丁。落 `guard` 布局的 appDir + profile
+  fallback 副本。
+- **验证**：单测 `unit-appboot-singleton-patch.test.js` 12 例全绿，含**行为级**复现
+  （未打补丁时两实例必然读不到 = 原 bug 最小复现；打补丁后必须读到且两实例是同一张表）；
+  对 pristine 离线内核树跑全量补丁 `total 61 / changed 68 / anchorMissing 0 / failed 0`；
+  `patch-surface` 快照同提交重取（marker 家族 82 → 83）后 verify 复绿。
 
 ## [1.0.2] - 2026-10-11
 

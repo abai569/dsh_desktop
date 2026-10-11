@@ -101,6 +101,21 @@ bash dsh-tauri/scripts/smoke-installed.sh            # ③ 安装布局冒烟
 - **版本号要三处同步**：`dsh-desktop/package.json`、`dsh-tauri/src-tauri/Cargo.toml`
   （`workspace.package.version`）、`dsh-tauri/src-tauri/src/app/tauri.conf.json`。
   其中 `tauri.conf.json` 的 version 会被 CI 与 tag 做 fail-fast 比对，漏改直接发版失败。
+- **macOS 上「同一文件被 ESM 加载成两个模块」＝ 路径大小写，症状是「什么都存不进去」**：
+  macOS APFS 默认大小写不敏感，但 **ESM 模块缓存按 URL 字符串区分大小写**——壳 supervisor
+  spawn 内核时拼 `Contents/resources`（小写 `r`，见 `[supervisor] 内核 spawn:` 那行日志），
+  loader 走磁盘真实的 `Contents/Resources`（大写 `R`），于是同一份 `dsh-app-boot` 被判成两个
+  模块实例，各持一份模块级 `bootstrapIncludes` WeakMap。`mountRootInclude` 登记进甲实例，
+  `reconcileProfilePatches` 在乙实例 `get` 必落空 → 抛
+  `dsh: profile reload requires the root Include entry` → 被 `dsh-api-settings-controller`
+  包成 `settings/rejected` → **settings.mutate 全线失败**，用户观感是引导页「开始设置」点不动
+  +「未能保存设置，请重试。」反复回滚 welcome，且引导之后的设置页也一律存不住（2026-10-11
+  macOS 实机取证）。三条排查经验：① 排查这类「`.set` 成功但 `.get` 落空」的自相矛盾事实，
+  直接怀疑**模块有多份实例**——给模块加随机指纹 + 打完整 `import.meta.url`，一眼现形；
+  ② 修法选**把表提升为 globalThis 单例**而非改 spawn 的大小写：spawn argv 在 Rust 壳侧，
+  改它要三平台复验，而任何符号链接 / profile fallback / agent overlay 落点的二次加载都会
+  重演分裂，数据侧收口无平台面（见 `appboot-bootstrap-singleton`）；
+  ③ macOS 上任何「`/Contents/resources` 路径」都值得扫一眼大小写，不必先怀疑内核逻辑。
 - **`patch-surface.snapshot.json` 悬空快照会「假绿」——改过补丁产物必须重收敛 + 重取快照同提交入库**：
   补丁变换带幂等守卫，改注入文案 / 删变换后本机 dev 树不重跑 `npm ci` 仍停在旧字节，与旧快照
   互证 `verify` 绿；只有新鲜收敛态（CI 的 `npm ci`）才暴露漂移。2026-10-06~10 的 chronic 红即两轮

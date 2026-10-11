@@ -28,7 +28,7 @@
 //              供 preflight 只读体检复用；
 //   requires   宿主能力依赖（见 host-capabilities.js）；
 //   cli        CLI 同步期（sync-companion-plugins.js --with-patches）是否也应用；
-//              cli:true 现共 26 项（HEAD 原有 8 个 + slot-error-isolation +
+//              cli:true 现共 27 项（HEAD 原有 8 个 + slot-error-isolation +
 //              session-persistence + tool-source-compat / pi-ai-opencode-go-models
 //              / pi-ai-credits / pi-ai-reasoning-defaults 四个数据完整性补丁
 //              + bundle-arrival-retry / agent-loop-scheduler-guard 两个内核
@@ -36,7 +36,8 @@
 //              atomic-write-orphan-lock / settings-models-resilience /
 //              empty-tool-name-guidance + codex/claude 本地二进制回落 +
 //              skill-dirs-compat + pi-ai 系 4xx 落盘/schema 净化/Responses 名字净化 +
-//              workspace-chip-label-hold）；计数哨兵见
+//              workspace-chip-label-hold + appboot-bootstrap-singleton）；
+//              计数哨兵见
 //              ta6-registry-invariants.test.js F 与 unit-patch-registry.test.js；
 //              guard 组为 false，仅桌面壳运行时应用（image-send / vision-key 一族
 //              曾属此类，已随识图插件退役整体摘除，见 patch-adapters 的退役注释）；
@@ -131,6 +132,7 @@ const {
   transformProfilePatchGuard,
   transformProfileBundleAppBoot,
   transformProfilePatchLayerGuard,
+  transformAppBootBootstrapSingleton,
   transformManualSortFix,
   transformPluginInventoryTabMergeFix,
   transformPersistentShellAbortRace,
@@ -173,6 +175,7 @@ const {
   PROFILE_PATCH_GUARD_MARKER,
   PROFILE_BUNDLE_GUARD_MARKER,
   APP_BOOT_PATCH_LAYER_GUARD_MARKER,
+  BOOTSTRAP_SINGLETON_MARKER,
   MANUAL_SORT_DRAG_MARKER,
   PLUGIN_INVENTORY_TAB_MARKER,
   PERSISTENT_ABORT_RACE_MARKER,
@@ -1884,6 +1887,49 @@ const PATCH_SPECS = [
       alreadyLog: alreadySkip,
       doneLog: (file) => '已扩 released-v0 准入清单（块账本/origin/描述符 v2 盖章），成员原样保留 ' + file,
       failLog: (file, err) => 'released-v0 历史恢复补丁失败(' + file + '): ' + err.message,
+    },
+  },
+  // -------------------------------------------------------------------------
+  // dsh-app-boot 的 bootstrapIncludes 单例化（2026-10-11 macOS 实机取证）。
+  //
+  // 根因不是「设置写入链坏了」，而是模块被加载成两份：macOS 壳 supervisor
+  // spawn 内核时拼 `Contents/resources`（小写 r，日志实证见 supervisor 那行），
+  // 而 loader 走磁盘真实目录 `Contents/Resources`（大写 R）。APFS 大小写不敏感
+  // → 同一份 dsh-app-boot，但 **ESM 模块缓存按 URL 字符串区分大小写** → 两个模块
+  // 实例各持一份模块级 WeakMap。于是 mountRootInclude 写进去的那张表，
+  // reconcileProfilePatches 在另一实例里 get 必然落空，抛
+  // `requires the root Include entry`，被 dsh-api-settings-controller 包成
+  // `settings/rejected` → **任何设置写入全失败**（引导页与设置页一起，用户观感
+  // 是「点开始设置进不去」+「未能保存设置，请重试。」反复回滚 welcome）。
+  //
+  // 修法：WeakMap 提升到 globalThis 惰性建（`??=`），两实例共享一张表；顺带把
+  // reconcile 落空时的静默 throw 补一条可检索日志（平时零噪音，只在真出问题时
+  // 留痕，便于日后回归）。取「数据侧兜住」而非「改壳 spawn 的大小写」的理由：
+  // spawn argv 在 Tauri Rust 侧，改它要三平台复验；而任何经符号链接 / profile
+  // fallback / agent overlay 落点的二次加载都会重演同样的分裂，数据侧收口更稳。
+  //
+  // 归 runtime 组而非 guard 组：这不是「出问题时的兜底」，是**功能主线**
+  // （设置写不进去 = 核心功能不可用），必须进 payload 的 CLI 同步期（cli:true），
+  // 否则装机态缺少该补丁。落 guard 布局的 appDir + profile fallback 两副本。
+  // -------------------------------------------------------------------------
+  {
+    id: 'appboot-bootstrap-singleton',
+    group: 'runtime',
+    order: 403,
+    kind: 'file',
+    layout: 'guard',
+    wslLayout: 'guard',
+    pkgRel: APP_BOOT_PKG_REL,
+    transform: transformAppBootBootstrapSingleton,
+    marker: BOOTSTRAP_SINGLETON_MARKER,
+    requires: [],
+    failPolicy: 'warn',
+    cli: true,
+    logs: {
+      prefix: 'app-boot 模块单例化补丁',
+      alreadyLog: alreadySkip,
+      doneLog: (file) => '已将 bootstrapIncludes 提升为 globalThis 单例（修 profile reload 取不到根 Include 导致的设置写入全线失败） ' + file,
+      failLog: (file, err) => 'app-boot 模块单例化补丁失败(' + file + '): ' + err.message,
     },
   },
 ];

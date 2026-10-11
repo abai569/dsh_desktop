@@ -78,6 +78,14 @@ const {
   applyAppBootPatchLayerGuard,
 } = require('../../profile-bundle-heal');
 
+// dsh-app-boot 的 bootstrapIncludes 单例化（macOS 路径大小写导致同一模块被
+// ESM 加载两次、模块级 WeakMap 分裂 → profile reload 必抛 → 设置全线不可存）。
+// 详见 appboot-singleton-patch.js 顶部的完整取证链。
+const {
+  BOOTSTRAP_SINGLETON_MARKER,
+  applyBootstrapIncludesSingleton,
+} = require('./appboot-singleton-patch');
+
 // 包级补丁（node_modules 根应用器，唯一实现；签名 (nmRoot, log) => number）。
 const { patchWebSearchBaseUrl } = require('../patch-web-search-baseurl');
 const { patchMenuViewport } = require('../patch-menu-viewport');
@@ -201,6 +209,37 @@ function transformProfilePatchLayerGuard(src, file) {
   if (!out.changed) {
     if (!src.includes(APP_BOOT_PATCH_LAYER_GUARD_MARKER)) {
       return { status: 'anchor-missing', detail: file + ' 锚点未匹配（dsh 版本可能已变化），跳过' };
+    }
+    return { status: 'already' }; // 已注入（幂等，静默）
+  }
+  return { status: 'changed', src: out.src };
+}
+
+// ---------------------------------------------------------------------------
+// dsh-app-boot bootstrapIncludes 单例化（2026-10-11 macOS 实机取证）。
+//
+// 背景与取证链见 scripts/lib/appboot-singleton-patch.js 顶部：macOS 壳 spawn
+// 内核用 `Contents/resources`、loader 走 `Contents/Resources`，同一份
+// dsh-app-boot 被 ESM 按 URL 字符串大小写敏感判成两个模块实例，各自持一份
+// 模块级 WeakMap；profile reload 取 bootstrapIncludes.get(ctx) 落空即抛
+// `requires the root Include entry`，被 dsh-api-settings-controller 包成
+// `settings/rejected` → 任何设置写入全失败（引导页 + 设置页一起）。
+//
+// 修法：WeakMap 提升到 globalThis 上惰性建（`??=`），两个实例共享一张表；
+// 顺带把 reconcile 落空时的静默 throw 补一条可检索日志。语义不变式：仍是
+// WeakMap、键仍是 ctx，仍弱引用不泄漏，只换存放位置。
+//
+// 幂等：marker 短路 already；两处锚点任一失配即整体不写（不半改），由
+// 调用方按 marker 判 anchor-missing —— 上游若原生修好，本补丁自然退役。
+// ---------------------------------------------------------------------------
+function transformAppBootBootstrapSingleton(src, file) {
+  const out = applyBootstrapIncludesSingleton(src);
+  if (!out.changed) {
+    if (!src.includes(BOOTSTRAP_SINGLETON_MARKER)) {
+      return {
+        status: 'anchor-missing',
+        detail: file + ' 锚点未匹配（dsh 版本可能已变化），跳过',
+      };
     }
     return { status: 'already' }; // 已注入（幂等，静默）
   }
@@ -2417,6 +2456,7 @@ module.exports = {
   transformProfilePatchGuard,
   transformProfileBundleAppBoot,
   transformProfilePatchLayerGuard,
+  transformAppBootBootstrapSingleton,
   transformManualSortFix,
   transformPluginInventoryTabMergeFix,
   // 持久 shell 停止修复（abort race + 中断升级）。
@@ -2497,6 +2537,7 @@ module.exports = {
     PROFILE_PATCH_GUARD_MARKER,
     PROFILE_BUNDLE_GUARD_MARKER,
     APP_BOOT_PATCH_LAYER_GUARD_MARKER,
+    BOOTSTRAP_SINGLETON_MARKER,
     PLUGIN_INVENTORY_TAB_MARKER,
     PERSISTENT_ABORT_RACE_MARKER,
     INTERRUPT_ESCALATION_MARKER,
