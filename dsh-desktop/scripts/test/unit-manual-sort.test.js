@@ -122,7 +122,9 @@ function reorderAfterDrag(accountSessionIds, draggedId, over, groupSessions) {
 // ---------------------------------------------------------------------------
 
 test('K25 transform：会话行 onDragStart 注入 flushSync，工作区行不受影响，幂等', { skip: !hasSource }, () => {
-  const pristine = toPristineSource('manual-sort-drag-fix', fs.readFileSync(WORKSPACE_PATH, 'utf8'));
+  // 基准必须用**族还原**：K25 与 K26 同一靶文件，只剥 K25 会留下 K26 注入的
+  // 工作区行 flushSync（收敛态），下方「工作区行不受 K25 影响」的断言会假红。
+  const pristine = toPristineSource('manual-sort-drag-family', fs.readFileSync(WORKSPACE_PATH, 'utf8'));
   const r = transformManualSortFix(pristine, 'client.js');
   assert.equal(r.status, 'changed', '未打补丁源应 changed');
   const src = r.src;
@@ -137,10 +139,13 @@ test('K25 transform：会话行 onDragStart 注入 flushSync，工作区行不�
   assert.ok(nodeIdx > 0, '应命中会话行 setData(node.id)');
   assert.ok(src.slice(nodeIdx, nodeIdx + 160).includes('react_dom.flushSync(() => {'), '会话行 drag.start 应被 flushSync 包裹');
 
-  // 工作区行（row.key）保持原样（不引入无关变更）。
+  // 工作区行（row.key）**不由 K25 处理**（K26 才是它那条补丁）。本用例只断言
+  // 「K25 自己不动工作区行」——即这份仅含 K25 的产物里工作区行仍是裸 drag.start()。
+  // 注意不能断言「工作区行永远不含 flushSync」：K26（order 151）专责包裹该行，
+  // 叠加后工作区行本就该有 flushSync（见 unit-manual-sort-workspace.test.js）。
   const rowIdx = src.indexOf('e.dataTransfer.setData("text/plain", row.key);');
   assert.ok(rowIdx > 0, '应命中工作区行 setData(row.key)');
-  assert.ok(!src.slice(rowIdx, rowIdx + 120).includes('flushSync'), '工作区行不应被 flushSync 包裹');
+  assert.ok(!src.slice(rowIdx, rowIdx + 120).includes('flushSync'), 'K25 单独应用时工作区行不应被 flushSync 包裹（该行归 K26）');
 
   // 幂等。
   assert.equal(transformManualSortFix(src, 'client.js').status, 'already');

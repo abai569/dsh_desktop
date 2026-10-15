@@ -141,7 +141,7 @@ test('boot 链一条龙：applyAll(60) → composition-integrity → preflight �
   const r2 = applyAll(ctx);
   // total = 处理的 spec 数（含 target-absent，applyAll 内每 spec 无条件 +1），
   // 与一遍同源必相等，均等于 PATCH_SPECS.length；二遍只是 changed 归零。
-  assert.equal(r2.total, 61, `二遍 total 应与一遍一致（实际 ${r2.total}）`);
+  assert.equal(r2.total, 62, `二遍 total 应与一遍一致（实际 ${r2.total}）`);
   assert.deepEqual(r2.errors, [], `二遍不得有 errors：${JSON.stringify(r2.errors)}`);
   assert.equal(r2.changed, 0, `二遍应幂等（一遍 changed=${changedFirst}，二遍 changed=${r2.changed}）`);
 
