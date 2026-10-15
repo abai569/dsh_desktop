@@ -360,6 +360,9 @@ jobs:
   # Windows 11 x64 模拟（Prism）或自愈链兜底，故 continue-on-error。
   build-windows-arm64:
     name: Windows ARM64 (NSIS, experimental)
+    # Windows x64（用户主平台）优先独占队列编译；其余平台等它成功后再排队，
+    # 避免四个平台并行抢 runner 让 Windows 包最后才出来。
+    needs: [build-windows]
     runs-on: windows-latest
     timeout-minutes: 90
     continue-on-error: true
@@ -865,6 +868,7 @@ jobs:
 
   build-linux:
     name: Linux x64 (AppImage + deb)
+    needs: [build-windows]
     runs-on: ubuntu-22.04
     timeout-minutes: 75
     continue-on-error: true
@@ -1067,6 +1071,7 @@ jobs:
 
   build-macos:
     name: macOS ARM64 (dmg)
+    needs: [build-windows]
     runs-on: macos-14
     timeout-minutes: 75
     continue-on-error: true
@@ -1287,6 +1292,128 @@ jobs:
           name: macos-arm64
           path: DSH-Desktop-*-macos-arm64.dmg
           if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # publish-windows：Windows x64 优先发布（2026-10-15 新增）。
+  #
+  # 动机：四平台并行时 Windows x64（用户主平台，Rust LTO 编译最慢）总是最后完成，
+  # 而 macOS/Linux/ARM64 常年在队列里空耗。改成两级发布后，Windows 安装包在
+  # 「build-windows + build-portable」完成的那一刻即可下载，其余平台随后补全。
+  #
+  # 与下方 publish 的分工：
+  #   · 本 job（精简）：只收 Windows 资产（.exe / .zip），生成简版说明，
+  #     跳过「全平台齐全」类校验——目的是尽快让 Windows 包可达。
+  #   · publish（完整）：等全部平台结束后重跑一遍，下载**全部**产物做
+  #     delete-then-upload 幂等覆盖，并写完整 release notes 与全套校验。
+  # 两者对同一 tag 操作同一 Release；上传路径本身是幂等的（同名先删后传），
+  # 所以「先精简后完整」不会产生重复资产，也不会留旧内容残影。
+  # ---------------------------------------------------------------------------
+  publish-windows:
+    name: Publish Release (Windows first)
+    needs: [build-windows, build-portable]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: always() && !cancelled() && (needs.build-windows.result == 'success' || needs.build-portable.result == 'success')
+    steps:
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: win-x64-*
+          path: artifacts
+
+      - name: Collect Windows installers
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          # 只收 Windows 发布产物；排除 win-x64-bin 里的裸 exe（便携版原料）
+          find artifacts -type f \( -name "*.exe" -o -name "*.zip" \) ! -name "dsh-tauri-app.exe" -exec cp {} release-assets/ \; || true
+          if [ -z "$(ls -A release-assets)" ]; then
+            echo "::error::没有收集到任何 Windows 产物——中止发布"
+            exit 1
+          fi
+          ls -la release-assets
+
+      - name: Generate sha256 sidecars
+        # 与完整 publish 同源逻辑：每个主资产一个边车（自动更新校验链强制要求）。
+        run: |
+          set -euo pipefail
+          cd release-assets
+          for f in *; do
+            case "$f" in *.sha256) continue ;; esac
+            sha256sum "$f" > "$f.sha256"
+          done
+
+      - name: Resolve release tag/version
+        id: ver
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            tag='${{ github.event.inputs.version }}'
+          else
+            tag='${{ github.ref_name }}'
+          fi
+          case "$tag" in v*) ;; *) tag="v$tag" ;; esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes (Windows first)
+        run: |
+          TAG='${{ steps.ver.outputs.tag }}'
+          VERSION='${{ steps.ver.outputs.version }}'
+          cat > release-notes.md << EOF
+          # DSH Desktop ${VERSION}
+
+          ## 📦 本次发布内容
+
+          **左侧边栏拖拽排序修复（K26）**
+          项目/工作区分组行的拖拽起点未做 React 状态同步提交，导致首个 dragover 不
+          preventDefault、浏览器判定目标不可 drop——项目行完全拖不动。已按会话行
+          （K25）同源修法包裹 flushSync。
+
+          **撤回不再堆积同名会话（easyrewrite）**
+          原实现撤回后归档原会话、标题原样继承，侧栏会冒出多个同名会话。现改为删除
+          原会话、由 fork 副本接管其可见位置，观感即「同一会话原地重开」。
+
+          **撤回确认胶囊默认关闭**
+          撤回是主动动作，去掉二次确认；设置页开关保留，可随时开回。
+
+          > Windows 安装包优先生成，其余平台（macOS / Linux / ARM64）资产随后补入本
+          > Release。若此处暂时缺少对应平台资产，稍后刷新即可。
+
+          ## 安装包
+
+          | 平台 | 格式 |
+          |------|------|
+          | Windows x64 | NSIS 安装包 (.exe) / 便携版 (.zip) |
+          EOF
+
+      - name: Upload Windows assets to Release
+        # 上传纪律同完整 publish：release 不存在才创建，已存在绝不触碰元数据；
+        # 同名资产先 delete-asset 再上传（幂等重建，供后续完整 publish 覆盖）。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.ver.outputs.tag }}'
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG 不存在——创建"
+            if [ "${RELEASE_PRERELEASE}" = "true" ]; then
+              gh release create "$TAG" --prerelease --title "DSH Desktop $TAG（预发布）" --notes-file release-notes.md
+            else
+              gh release create "$TAG" --title "DSH Desktop $TAG" --notes-file release-notes.md
+            fi
+          else
+            echo "release $TAG 已存在——只补资产，不动 title/body/prerelease"
+          fi
+          for f in release-assets/*; do
+            name=$(basename "$f")
+            if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq "$name"; then
+              echo "删除已存在的同名资产: $name"
+              gh release delete-asset "$TAG" "$name" --yes
+            fi
+            echo "上传: $f"
+            gh release upload "$TAG" "$f"
+          done
 
   publish:
     name: Publish Release
@@ -1538,7 +1665,7 @@ jobs:
           # publish job 无 checkout（无 git 上下文）——gh 必须显式知道仓库，
           # 否则 create 走「从本地 git 推断」路径直接 fatal（v0.5.1 第三跑
           # 实证：六资产校验全过、create 崩在 not a git repository）。
-          GH_REPO: myYangyunfan/dsh_desktop
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           TAG='${{ steps.ver.outputs.tag }}'
@@ -1570,7 +1697,7 @@ jobs:
         # 大小与本地一致且非零。另列出 release 全部资产供人工核对重复。
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: myYangyunfan/dsh_desktop
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           TAG='${{ steps.ver.outputs.tag }}'
