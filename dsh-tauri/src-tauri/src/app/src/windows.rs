@@ -109,6 +109,24 @@ pub fn create_main_window(
     // 拖边缩放，显式置 true 防构建配置漂移；与 Electron frame:false +
     // resizable:true 行为对齐。
     .resizable(true)
+    // 关闭 Tauri 的原生拖放接管（2026-10-16 拖拽排序失效根治）。
+    //
+    // Tauri 2 默认 `dragDropEnabled: true`：它会在 **WebView2 原生层**注册拖放
+    // 处理并消费 drag/drop 事件，导致 webview 内的 HTML5 拖拽（draggable /
+    // dragstart / dragover / drop）在越过 dragstart 之后**再也收不到事件**。
+    // 实机症状（诊断面板取证）：dragstart 正常触发，随后**没有任何 dragenter /
+    // dragover / drop**，直接跳到 dragend，光标全程禁止符号 —— 左侧边栏项目/会话
+    // 行的「手动排序」因此完全失效。
+    //
+    // 本仓库的原生拖放**已无任何消费方**：唯一使用者是已退役的内置伴随插件
+    // dsh-file-drop，其 Rust→垫片广播链（DragDropEvent / DropPrecheck /
+    // route_drag_drop）已于 2026-10 整段裁撤（见 lib.rs 尾部说明）。因此关闭
+    // 原生接管不会损失任何功能，只把拖放交还给 webview 自身。
+    //
+    // 与两个参考实现（dataelement/dsh-desktop、anywhere-labs/dsh-desktop）对齐：
+    // 它们基于 Electron，而 Electron 默认**不**拦截 webview 内的 HTML5 拖拽，
+    // 所以侧栏拖拽开箱可用；Tauri 需要显式关闭才等价。
+    .disable_drag_drop_handler()
     .initialization_script(BRIDGE_SHIM_JS)
     .on_navigation(|url| {
         // 导航围栏：仅 127.0.0.1（内核/内嵌页）与 tauri 内部协议。
@@ -264,6 +282,9 @@ pub fn build_float_window<R: tauri::Runtime>(
         .inner_size(900.0, 640.0)
         .min_inner_size(480.0, 360.0)
         .decorations(false)
+        // 同主窗：关闭 Tauri 原生拖放接管，否则 webview 内 HTML5 拖拽被拦截
+        // （详见 build_main_window 上该调用的长注释）。
+        .disable_drag_drop_handler()
         .initialization_script(BRIDGE_SHIM_JS)
         .initialization_script(mode_script)
         .initialization_script(preset_script)
@@ -467,6 +488,8 @@ pub fn build_sponsor_window<R: tauri::Runtime>(
     .maximizable(false)
     .closable(true)
     .decorations(true) // 原生标题栏（含 X 关闭钮），默认关闭 = destroy
+    // 与主窗/浮窗一致：关闭 Tauri 原生拖放接管（详见 build_main_window 注释）。
+    .disable_drag_drop_handler()
     .initialization_script(inject_script)
     .build()
 }
@@ -658,6 +681,8 @@ pub fn build_update_progress_window<R: tauri::Runtime>(
     .skip_taskbar(true)
     .shadow(false)
     .focused(false) // 创建不抢焦点（下载进度不打断用户当前操作）
+    // 与主窗/浮窗一致：关闭 Tauri 原生拖放接管（详见 build_main_window 注释）。
+    .disable_drag_drop_handler()
     .initialization_script(inject_script);
     if let Some((x, y)) = position {
         b = b.position(x, y);
@@ -859,6 +884,40 @@ mod tests {
         assert!(
             !seg.contains(".decorations(false)"),
             "主窗不得硬编码 decorations(false)（Linux 白屏回归面）: {seg}"
+        );
+    }
+
+    /// 拖拽排序失效根治面：**所有** webview 建窗链都必须关闭 Tauri 的原生拖放接管。
+    ///
+    /// 背景（2026-10-16 实机取证）：Tauri 2 的 `dragDropEnabled` 默认 true，会在
+    /// WebView2 原生层消费 drag/drop 事件，使 webview 内的 HTML5 拖拽在 dragstart
+    /// 之后收不到任何 dragenter/dragover/drop（诊断面板证据：dragstart → 直接
+    /// dragend，光标禁止符号），左侧边栏「手动排序」因此完全失效。必须显式调用
+    /// `.disable_drag_drop_handler()` 才与两个 Electron 参考实现行为等价。
+    ///
+    /// 本测试按**建窗点计数**守护：新增任何 `WebviewWindowBuilder::new` 而漏掉该
+    /// 调用都会红——防止以后加窗口时回归。
+    ///
+    /// 计数口径：以「生产段内两个符号的出现次数相等」为准（主窗的调用因平台门/
+    /// 缩放注释块较长，与 builder 相隔约 40 行，故不做逐点邻近扫描，只比总数）。
+    #[test]
+    fn all_webview_windows_disable_native_drag_drop_shape() {
+        let src = include_str!("windows.rs");
+        // 只统计生产代码里的 builder 调用点（测试自身会提及该符号，先截到测试模块前）。
+        let prod = src
+            .split("#[cfg(test)]")
+            .next()
+            .expect("windows.rs 生产段");
+        let builder_count = prod.matches("WebviewWindowBuilder::new").count();
+        let disable_count = prod.matches(".disable_drag_drop_handler()").count();
+        assert!(
+            builder_count >= 4,
+            "建窗点计数异常（期望 ≥4：主窗/浮窗/赞助窗/更新进度窗），实际 {builder_count}"
+        );
+        assert_eq!(
+            disable_count, builder_count,
+            "每个 WebviewWindowBuilder::new 都必须跟一个 .disable_drag_drop_handler()\
+（否则该窗口内 HTML5 拖拽被 Tauri 原生层吃掉）：builder={builder_count} disable={disable_count}"
         );
     }
 
