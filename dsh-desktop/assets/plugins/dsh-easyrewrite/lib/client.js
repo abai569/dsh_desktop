@@ -85,7 +85,10 @@ window.__ModuleLoader__.load({
     // 行为开关（设置页控制）
     function rewriteOnClick() { return getBool("dsh-easyrewrite:rewriteOnClick", true); }
     function editOffShowRecall() { return getBool("dsh-easyrewrite:editOffShowRecall", true); }
-    function recallConfirmEnabled() { return getBool("dsh-easyrewrite:recallConfirm", true); }
+    // dsh-desktop patch (easyrewrite-recalled-session-takeover)：撤回确认胶囊默认关闭。
+    // 理由：撤回是用户主动点击的动作，误操作风险极低，二次确认徒增一次点击；
+    // 设置页开关保留（dsh-easyrewrite:recallConfirm 显式设 true 仍可开回）。
+    function recallConfirmEnabled() { return getBool("dsh-easyrewrite:recallConfirm", false); }
 
     // ---------- 版本家族（< X > 翻页器）：派生自官方 parentId lineage（review #6 删 localStorage 自建树） ----------
     // 官方 fork：host 写 meta.parentSession，client upsert summary.parentSessionId；
@@ -1124,16 +1127,13 @@ window.__ModuleLoader__.load({
           await requestCleanGhostQueue(newId);
           // review M6：resume-send 带时间戳（30s TTL，防陈旧草稿幽灵自动发送）
           try { localStorage.setItem("dsh-easyrewrite:resume-send:" + newId, JSON.stringify({ draftText: sendText, t: Date.now(), imageIds: imgIds, sel: msel })); } catch (e) { /* ignore */ }
-          // 2) 无痕替换：归档原会话 → 打开新会话
-          var archived = false;
-          try {
-            if (typeof props.ctxWorkspaces !== "undefined" && typeof props.ctxWorkspaces.archiveSession === "function") {
-              // review M8：await + catch，避免 unhandled rejection
-              await Promise.resolve(props.ctxWorkspaces.archiveSession(sid)).catch(function () { /* ignore */ });
-              archived = true;
-            }
-          } catch (e) { log("warn", "recall", "归档原会话失败", { err: String(e && e.message ? e.message : e) }); }
-          log("info", "recall", "撤回完成：归档原会话 + 打开新会话", { newId: newId, archived: archived });
+          // 2) 无痕替换：原会话接管（删除 → 副本接管；删除被拒则退回归档）后打开新会话。
+          // dsh-desktop patch (easyrewrite-recalled-session-takeover)：原先这里是
+          // archiveSession(sid)，归档项虽默认不显示，但副本标题原样继承 → 用户看到
+          // 「凭空多个同名会话」，连撤几次就堆几个。改删后侧栏只剩副本一个，观感即
+          // 「同一会话原地重开」。
+          var takeover = await takeoverOldSession(props, sid, "recall");
+          log("info", "recall", "撤回完成：原会话接管 + 打开新会话", { newId: newId, deleted: takeover.deleted, archived: takeover.archived });
 
           // 稳健切换会话（多重通道与降级）
           var opened = safeOpenSession(newId, props);
@@ -2496,6 +2496,79 @@ window.__ModuleLoader__.load({
       return false;
     }
 
+    /**
+     * dsh-desktop patch (easyrewrite-recalled-session-takeover)：撤回后让 fork 副本
+     * 「接管」原会话的可见位置，用户看不出后台新建了会话。
+     *
+     * 背景：内核没有原地截断能力（只有 session.fork，必产新 sessionId），所以撤回
+     * 天然会多出一个会话。插件原实现是把原会话 **归档**（archiveSession）——归档项
+     * 默认不在侧边栏显示，但副本标题原样继承（easyrewrite 调 fork 时未传
+     * increaseTitle，内核的「(1) 后缀」逻辑不触发），于是用户看到的是「凭空多出一个
+     * 同名会话」，撤几次堆几个，观感极差（2026-10-15 实测：10 分钟内连撤 7 次 →
+     * 侧栏 7 个近似同名会话）。
+     *
+     * 修法：把「归档原会话」换成「删除原会话」（ctx.workspaces.deleteSession）。差别：
+     *   - 归档：原会话仍在磁盘、仍在「已归档」筛选里可达 → 用户翻筛选还能看到重复项；
+     *   - 删除：原会话从列表与磁盘一并消失 → 侧栏只剩副本一个，且标题与原来一致，
+     *     「撤回后继续」在观感上就是同一个会话原地重开。
+     * 语义上可接受：撤回本身就是要丢弃该消息之后的内容，原会话那份全文已由副本的
+     * 截断前缀等价保留。
+     *
+     * 失败安全：删除被拒（如会话仍在跑，内核返回 running/live 类错误）时**不阻断**
+     * 整个撤回流程——退回归档（原语义），最坏结果只是回到改动前的观感，不会让撤回
+     * 本身失败。
+     *
+     * @param props - 组件 inject 面（ctxWorkspaces / archiveSession）
+     * @param sessionId - 被撤回的原会话 id
+     * @param tag - 日志 tag（"recall" | "edit"）
+     * @returns {Promise<{deleted: boolean, archived: boolean, error: string|null}>}
+     */
+    function takeoverOldSession(props, sessionId, tag) {
+      var ws = props && props.ctxWorkspaces;
+      var canDelete = ws && typeof ws.deleteSession === "function";
+      if (canDelete) {
+        return Promise.resolve(ws.deleteSession(sessionId)).then(function () {
+          log("info", tag, "原会话已删除（副本接管，用户不可见新建）", { sessionId: sessionId });
+          return { deleted: true, archived: false, error: null };
+        }).catch(function (e) {
+          var msg = String(e && e.message ? e.message : e);
+          log("warn", tag, "删除原会话被拒，退回归档", { sessionId: sessionId, err: msg });
+          return archiveOnly(props, sessionId, tag).then(function (ok) {
+            return { deleted: false, archived: ok, error: msg };
+          });
+        });
+      }
+      log("warn", tag, "deleteSession 不可用，退回归档", { sessionId: sessionId });
+      return archiveOnly(props, sessionId, tag).then(function (ok) {
+        return { deleted: false, archived: ok, error: null };
+      });
+    }
+
+    /** 旧语义兜底：归档原会话（takeover 的降级分支，保持原行为不变）。 */
+    function archiveOnly(props, sessionId, tag) {
+      try {
+        var archiver = (props && typeof props.archiveSession === "function")
+          ? props.archiveSession
+          : (props && props.ctxWorkspaces && typeof props.ctxWorkspaces.archiveSession === "function"
+            ? function (id) { return props.ctxWorkspaces.archiveSession(id); }
+            : null);
+        if (!archiver) {
+          log("warn", tag, "归档能力不可用", { sessionId: sessionId });
+          return Promise.resolve(false);
+        }
+        return Promise.resolve(archiver(sessionId)).then(function () {
+          log("info", tag, "原会话已归档（降级路径）", { sessionId: sessionId });
+          return true;
+        }).catch(function (e) {
+          log("warn", tag, "归档原会话失败", { sessionId: sessionId, err: String(e && e.message ? e.message : e) });
+          return false;
+        });
+      } catch (e) {
+        log("warn", tag, "归档原会话异常", { sessionId: sessionId, err: String(e && e.message ? e.message : e) });
+        return Promise.resolve(false);
+      }
+    }
+
     /** 极限场景重置（首条消息/截断会话首条，无前置闭合边界，无法 fork）：
      * - 家族会话（截断/分叉产物，版本 ≥2）：归档当前 → 恢复并打开**父版本**（上一次模型回复处）重新开始；
      *   编辑模式经 resume 机制把修改文本带到父版本自动重发。
@@ -3602,13 +3675,11 @@ window.__ModuleLoader__.load({
               stagedDraft: stagedDraftPayload
             }));
           } catch (e) { /* ignore */ }
-          try {
-            if (props.ctxWorkspaces && typeof props.ctxWorkspaces.archiveSession === "function") {
-              // review M8：await + catch
-              await Promise.resolve(props.ctxWorkspaces.archiveSession(sid)).catch(function () { /* ignore */ });
-            }
-          } catch (e) { log("warn", "edit", "归档原会话失败", { err: String(e && e.message ? e.message : e) }); }
-          log("info", "edit", "编辑重发：归档原会话 + 打开新会话", { newId: newId });
+          // dsh-desktop patch (easyrewrite-recalled-session-takeover)：原会话交给
+          // takeoverOldSession 处理（优先删除 → 副本接管，用户看不出新建；删除被拒
+          // 时自动退回归档）。替换原先直接 archiveSession 的写法。
+          var editTakeover = await takeoverOldSession(props, sid, "edit");
+          log("info", "edit", "编辑重发：原会话接管完成 + 打开新会话", { newId: newId, deleted: editTakeover.deleted, archived: editTakeover.archived });
 
           var opened2 = safeOpenSession(newId, props);
           if (!opened2) {

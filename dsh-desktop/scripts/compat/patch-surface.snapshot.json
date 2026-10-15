@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-11T08:06:37.759Z",
+  "generatedAt": "2026-10-15T15:14:26.339Z",
   "kernelRoot": "@deepseek-ai",
-  "markerCount": 83,
+  "markerCount": 84,
   "surface": [
     {
       "file": "cordis-plugin-loader/lib/index.js",
@@ -204,12 +204,13 @@
     },
     {
       "file": "dsh-client-ui-workspace/lib/client.js",
-      "sha256": "ec4cfacdec0e3a5b",
+      "sha256": "76d9c010f6f83d0d",
       "markers": [
         "manual sort drag sync",
         "open project dir",
         "session manage",
-        "workspace pin"
+        "workspace pin",
+        "workspace row manual sort drag sync"
       ]
     },
     {
