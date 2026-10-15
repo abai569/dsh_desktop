@@ -26,6 +26,7 @@ const {
   SESSION_LOAD_GRACEFUL_CATCH_LEGACY,
   transformCredentialsInitialRetry,
   transformDeviceAuthGuidance, transformKernelBootWatchdog, transformManualSortFix,
+  transformManualSortDragWorkspaceFix,
   transformPromptContextLiteral, transformPersistenceAll,
   transformSessionHeaderScanGuard, transformSessionLoadGraceful, markers,
 } = require('../lib/patch-adapters');
@@ -67,6 +68,19 @@ const SENTINELS = [
     key: 'manual-sort-drag-fix',
     transform: transformManualSortFix,
     file: 'client.js',
+    candidates: [
+      path.join(__dirname, '..', '..', 'node_modules', '@deepseek-ai', WORKSPACE_PKG_REL),
+      path.join(__dirname, '..', '..', '..', 'dsh-tauri', 'package-payload', 'dsh-desktop',
+        'node_modules', '@deepseek-ai', WORKSPACE_PKG_REL),
+    ],
+  },
+  // K26（工作区行）与 K25 同一靶文件；族还原用 manual-sort-drag-family，单键只剥自己。
+  {
+    key: 'manual-sort-drag-fix-workspace',
+    transform: transformManualSortDragWorkspaceFix,
+    file: 'client.js',
+    family: 'manual-sort-drag-family',
+    chain: [transformManualSortFix],
     candidates: [
       path.join(__dirname, '..', '..', 'node_modules', '@deepseek-ai', WORKSPACE_PKG_REL),
       path.join(__dirname, '..', '..', '..', 'dsh-tauri', 'package-payload', 'dsh-desktop',

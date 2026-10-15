@@ -312,6 +312,48 @@ function transformManualSortFix(src, file) {
 }
 
 // ---------------------------------------------------------------------------
+// K26 手动排序拖拽失效修复（工作区/项目行；K25 的姊妹补丁）。
+//
+// 根因与 K25 同源，但 K25 当年**只覆盖了会话行**（node.id，注释明写「不动工作区行
+// （row.key）」），于是项目/工作区分组行一直拖不动：
+//   ProjectRowItem.onDragStart 里 drag.start()（= setWorkspaceDrag 状态提交）在
+// React 18 批处理下未同步提交，分组容器的 onDragOver/onDrop 被
+// `workspaceDrag === null ? void 0 : …` 挡在门外，首个 dragover 不
+// preventDefault → 浏览器判定目标不可 drop → 顺序既未提交也未持久化
+// （用户观感：项目行拖拽毫无反应）。
+// 修法：工作区行 onDragStart 内把 drag.start() 包进 react_dom.flushSync，与 K25
+// 对会话行做的是同一件事。
+//
+// 复用 K25 注入的 react_dom 绑定：K25 缺失（锚点漂移 / 只装了半套）时按
+// anchor-missing 跳过，绝不半途注入出一个未定义标识符。只改工作区行（row.key）
+// 拖拽起点，不动会话行、不动排序/持久化逻辑。
+//
+// marker 刻意**不以** K25 的 marker 开头（'dsh-desktop fix: manual sort drag sync'
+// 是 K25 marker，若被本节包含，K25 transform 的 already 判定会被 K26 的注入体误
+// 命中而跳过 K25）。
+// ---------------------------------------------------------------------------
+const MANUAL_SORT_DRAG_WORKSPACE_MARKER = 'dsh-desktop fix: workspace row manual sort drag sync';
+
+// K25 注入的 require 绑定（含 marker 注释行）——K26 的前置条件。
+const MANUAL_SORT_DRAG_WORKSPACE_REQUIRE_ANCHOR = MANUAL_SORT_DRAG_REQUIRE_INSERT;
+const MANUAL_SORT_DRAG_WORKSPACE_START_ANCHOR = 'e.dataTransfer.setData("text/plain", row.key);\n\t\t\t\t\tdrag.start();';
+const MANUAL_SORT_DRAG_WORKSPACE_START_FIX = 'e.dataTransfer.setData("text/plain", row.key);\n\t\t\t\t\treact_dom.flushSync(() => { // ' + MANUAL_SORT_DRAG_WORKSPACE_MARKER + '\n\t\t\t\t\t\tdrag.start();\n\t\t\t\t\t});';
+
+function transformManualSortDragWorkspaceFix(src, file) {
+  if (src.includes(MANUAL_SORT_DRAG_WORKSPACE_MARKER)) return { status: 'already' };
+  if (!src.includes(MANUAL_SORT_DRAG_WORKSPACE_REQUIRE_ANCHOR)) {
+    return { status: 'anchor-missing', detail: 'K25 的 react-dom 绑定不在位（manual-sort-drag-fix 未应用或已漂移），跳过 ' + file };
+  }
+  if (!src.includes(MANUAL_SORT_DRAG_WORKSPACE_START_ANCHOR)) {
+    return { status: 'anchor-missing', detail: '工作区行拖拽锚点未匹配（dsh 版本可能已变化），跳过 ' + file };
+  }
+  return {
+    status: 'changed',
+    src: src.replace(MANUAL_SORT_DRAG_WORKSPACE_START_ANCHOR, MANUAL_SORT_DRAG_WORKSPACE_START_FIX),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // 插件页标签合并补丁（原 applyPluginInventoryTabMergeFix）。
 // ---------------------------------------------------------------------------
 const PLUGIN_INVENTORY_TAB_MARKER = 'dsh-desktop fix: hide inventory tab';
@@ -2249,6 +2291,12 @@ const PRISTINE_INJECTIONS = {
     [MANUAL_SORT_DRAG_REQUIRE_ANCHOR, MANUAL_SORT_DRAG_REQUIRE_INSERT],
     [MANUAL_SORT_DRAG_START_ANCHOR, MANUAL_SORT_DRAG_START_FIX],
   ],
+  // K26（工作区行）与 K25 同一靶文件：单键只剥自己那一处（K26 的还原不依赖 K25
+  // 是否在位，两条锚点在字节上互不重叠）。整族还原请用 PRISTINE_FAMILIES 的
+  // manual-sort-drag-family（按应用逆序 K26 → K25）。
+  'manual-sort-drag-fix-workspace': [
+    [MANUAL_SORT_DRAG_WORKSPACE_START_ANCHOR, MANUAL_SORT_DRAG_WORKSPACE_START_FIX],
+  ],
   // credentials 首读重试（2026-09-05 补登记）。此前该族没有逆运算，它的单测只能「磁盘
   // 是什么态就断言什么态」：补丁态下走 already 分支，锚点真漂移时同样走 already，
   // 等于没有哨兵。marker 就在 CREDENTIALS_LOAD_INITIAL_NEW 的注释行里，所以剥该对
@@ -2302,6 +2350,12 @@ const PRISTINE_INJECTIONS = {
 // patchSessionPersistence（torn-tail → corrupt-guard）先于 registry 文件补丁
 // K5(order 275) → K6(order 280)，故逆序为 K6 → K5 → corrupt-guard → torn-tail。
 const PRISTINE_FAMILIES = {
+  // 手动排序拖拽族：同一靶文件（dsh-client-ui-workspace lib/client.js）上叠加两条
+  // 补丁。应用侧 K25(order 149) → K26(order 151)，故还原侧逆序 K26 → K25。
+  'manual-sort-drag-family': [
+    'manual-sort-drag-fix-workspace',
+    'manual-sort-drag-fix',
+  ],
   'session-persistence-family': [
     'session-load-graceful',
     'session-header-scan-guard',
@@ -2458,6 +2512,7 @@ module.exports = {
   transformProfilePatchLayerGuard,
   transformAppBootBootstrapSingleton,
   transformManualSortFix,
+  transformManualSortDragWorkspaceFix,
   transformPluginInventoryTabMergeFix,
   // 持久 shell 停止修复（abort race + 中断升级）。
   transformPersistentShellAbortRace,
@@ -2556,6 +2611,7 @@ module.exports = {
     SESSION_LOAD_GRACEFUL_MARKER_V2,
     SESSION_LOAD_GRACEFUL_MARKER_V3,
     MANUAL_SORT_DRAG_MARKER,
+    MANUAL_SORT_DRAG_WORKSPACE_MARKER,
     CODEX_LOCAL_BIN_MARKER,
     CLAUDE_LOCAL_BIN_MARKER,
   PI_AI_4XX_DUMP_MARKER,

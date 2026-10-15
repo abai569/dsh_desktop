@@ -174,8 +174,8 @@ for (const spec of fileSpecs) {
 //   设置写入全线失败；靶 dsh-app-boot 在离线内核闭包内，锚点为 WeakMap 声明行）。
 // 45 = 43 ＋ loader-import-failure-report ＋ prompt-admission-reason-report
 //   （2026-10-10 静默失败「原文上身」两条诊断补丁，靶均在离线内核闭包内）。
-test('契约面完整性：46 个 file transform 全部被本文件覆盖', () => {
-  assert.equal(fileSpecs.length, 46);
+test('契约面完整性：47 个 file transform 全部被本文件覆盖', () => {
+  assert.equal(fileSpecs.length, 47);
 });
 
 // 反「静默停摆」哨兵：诚实跳过集合必须恰为已知的 5 条非 vendored 目标——

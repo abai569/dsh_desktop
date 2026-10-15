@@ -134,6 +134,7 @@ const {
   transformProfilePatchLayerGuard,
   transformAppBootBootstrapSingleton,
   transformManualSortFix,
+  transformManualSortDragWorkspaceFix,
   transformPluginInventoryTabMergeFix,
   transformPersistentShellAbortRace,
   transformTerminalInterruptEscalation,
@@ -177,6 +178,7 @@ const {
   APP_BOOT_PATCH_LAYER_GUARD_MARKER,
   BOOTSTRAP_SINGLETON_MARKER,
   MANUAL_SORT_DRAG_MARKER,
+  MANUAL_SORT_DRAG_WORKSPACE_MARKER,
   PLUGIN_INVENTORY_TAB_MARKER,
   PERSISTENT_ABORT_RACE_MARKER,
   INTERRUPT_ESCALATION_MARKER,
@@ -639,6 +641,36 @@ const PATCH_SPECS = [
       alreadyLog: alreadySkip,
       doneLog: (file) => '已注入到 ' + file,
       failLog: (file, err) => '手动排序拖拽修复失败(' + file + '): ' + err.message,
+    },
+  },
+  // -------------------------------------------------------------------------
+  // K26 手动排序拖拽失效修复（工作区/项目行；K25 的姊妹补丁，2026-10-15）。
+  // K25 只覆盖会话行（其注释明写「不动工作区行（row.key）」），于是项目/工作区分组
+  // 行的 onDragStart 一直是裸的 drag.start()：React 18 批处理下 setWorkspaceDrag
+  // 状态未同步提交，分组容器的 onDragOver/onDrop 被 `workspaceDrag === null ?
+  // void 0 : …` 挡住 → 首个 dragover 不 preventDefault → 浏览器判定不可 drop →
+  // 项目行拖不动（用户报「左侧边栏项目不能拖拽排序」的确证根因）。修法与 K25 同源：
+  // 工作区行 onDragStart 内把 drag.start() 包进 react_dom.flushSync。
+  // 复用 K25 注入的 react-dom 绑定（order 149 先于本条 151），K25 缺失时 transform
+  // 按 anchor-missing 跳过，不产出未定义标识符。
+  {
+    id: 'manual-sort-drag-fix-workspace',
+    group: 'runtime',
+    order: 151,
+    kind: 'file',
+    layout: 'runtime-local',
+    wslLayout: 'wsl',
+    pkgRel: WORKSPACE_PKG_REL,
+    transform: transformManualSortDragWorkspaceFix,
+    marker: MANUAL_SORT_DRAG_WORKSPACE_MARKER,
+    requires: [],
+    failPolicy: 'warn',
+    cli: false,
+    logs: {
+      prefix: '手动排序拖拽修复(工作区行)',
+      alreadyLog: alreadySkip,
+      doneLog: (file) => '已注入到 ' + file,
+      failLog: (file, err) => '手动排序拖拽修复(工作区行)失败(' + file + '): ' + err.message,
     },
   },
   // K1 根因修复（「credentials service is absent」桌面端偶发，2026-08）：

@@ -45,10 +45,9 @@ const FORM = kernel.packageVersion;
 // → 58 = 59 − image-send-fix（2026-10 内置伴随插件批量拆除：注入体只读 dsh-vision
 // 的设置命名空间，识图插件退役后无可达路径；同批删除 patch-adapters 的
 // IMAGE_SEND_* / VISION_KEY_* / VISION_TOGGLE_* 常量，靶常量本身仍在册）
-// → 60 = 58 ＋ loader-import-failure-report ＋ prompt-admission-reason-report
-// （2026-10-10 静默失败「原文上身」两条诊断补丁，见 patch-registry 注释）。
-// 逐项理由见 ta6-registry-invariants.test.js 的 E。
-const SPEC_COUNT = 60;
+// → 62 = 60 ＋ appboot-bootstrap-singleton（2026-10-11，macOS 路径大小写导致
+//   dsh-app-boot 模块分裂）＋ manual-sort-drag-fix-workspace（K26，工作区行拖拽修复）。
+const SPEC_COUNT = 62;
 
 /** 与 kernel-pin 同版的 pristine 闭包根；不在场返回 null（调用侧响亮失败）。 */
 function formRoot() {
@@ -209,6 +208,10 @@ const BASELINE = {
     'reasoning-row-collapse-width': 'changed',
     'session-unknown-event-tolerance': 'changed',
     'released-v0-history-recovery': 'changed',
+    // appboot-bootstrap-singleton（2026-10-11 加入，同批更新 ta6-registry-invariants 但未同步此文件 → 既有红）
+    'appboot-bootstrap-singleton': 'changed',
+    // K26（工作区/项目行拖拽修复，2026-10-15）
+    'manual-sort-drag-fix-workspace': 'changed',
   },
 };
 

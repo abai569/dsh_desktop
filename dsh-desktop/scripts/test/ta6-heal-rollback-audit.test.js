@@ -135,8 +135,8 @@ const EXPECTED_NON_VENDORED = [
 // （2026-10-10 静默失败诊断两条）：靶 cordis-plugin-loader 与
 // dsh-api-session-controller 都在 vendor/dsh-kernel 离线闭包内，两条各带
 // FROM/TO 常量对（见上表），回滚 = npm ci 即 pristine，不新增盲区。
-test('审计 1：分类覆盖全部 46 个 file transform（无回滚盲区）', () => {
-  assert.equal(fileSpecs.length, 46);
+test('审计 1：分类覆盖全部 47 个 file transform（无回滚盲区）', () => {
+  assert.equal(fileSpecs.length, 47);
   const report = [];
   for (const spec of fileSpecs) {
     const pair = INVERSE_PAIR_HINTS[spec.id];

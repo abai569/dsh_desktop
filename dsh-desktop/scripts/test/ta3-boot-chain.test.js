@@ -91,8 +91,8 @@ test('boot 链一条龙：applyAll(60) → composition-integrity → preflight �
   // 取代已消失的 profile-boot 半边）。逐项理由见 ta6-registry-invariants 的 E，
   // 逐补丁在 pristine 闭包上的判定见 ta6-baseline-matrix。
   const r1 = applyAll(ctx);
-  assert.equal(r1.total, 61, `注册表应有 61 个补丁（实际 ${r1.total}）`);
-  assert.equal(PATCH_SPECS.length, 61, 'PATCH_SPECS 与编排 total 一致');
+  assert.equal(r1.total, 62, `注册表应有 62 个补丁（实际 ${r1.total}）`);
+  assert.equal(PATCH_SPECS.length, 62, 'PATCH_SPECS 与编排 total 一致');
   assert.ok(r1.changed > 0, `pristine 源一遍必须有写入（实际 changed=${r1.changed}）`);
   assert.deepEqual(r1.errors, [], `一遍不得有 errors：${JSON.stringify(r1.errors)}`);
   // degrade/fatal 档补丁的 anchor-missing 分流进 degraded（设计语义：降级告警
