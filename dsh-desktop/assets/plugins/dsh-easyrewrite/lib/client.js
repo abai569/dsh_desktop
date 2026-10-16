@@ -1127,13 +1127,28 @@ window.__ModuleLoader__.load({
           await requestCleanGhostQueue(newId);
           // review M6：resume-send 带时间戳（30s TTL，防陈旧草稿幽灵自动发送）
           try { localStorage.setItem("dsh-easyrewrite:resume-send:" + newId, JSON.stringify({ draftText: sendText, t: Date.now(), imageIds: imgIds, sel: msel })); } catch (e) { /* ignore */ }
-          // 2) 无痕替换：原会话接管（删除 → 副本接管；删除被拒则退回归档）后打开新会话。
-          // dsh-desktop patch (easyrewrite-recalled-session-takeover)：原先这里是
-          // archiveSession(sid)，归档项虽默认不显示，但副本标题原样继承 → 用户看到
-          // 「凭空多个同名会话」，连撤几次就堆几个。改删后侧栏只剩副本一个，观感即
-          // 「同一会话原地重开」。
-          var takeover = await takeoverOldSession(props, sid, "recall");
+          // 2) 无痕替换：先停掉仍在跑的回合，再让副本接管原会话的可见位置。
+          // dsh-desktop patch (easyrewrite-recall-stop-then-takeover)：
+          //   原实现直接调用 takeoverOldSession（删除 → 失败则归档）。当用户刚发完
+          //   消息、模型还在生成时点撤回，内核会拒绝删除（session-running）与归档
+          //   （session/active-turn），两者双失败 → 原会话留列表 + 副本也在列表
+          //   → 侧栏出现两个同名会话（2026-10-16 日志取证）。
+          //   现在：先 cancel 该会话的回合 → 等一下让 running 落下 → 删除（带一次重试）
+          //   → 归档兜底。
+          var takeover = await takeoverOldSessionWithStop(props, sid, "recall");
           log("info", "recall", "撤回完成：原会话接管 + 打开新会话", { newId: newId, deleted: takeover.deleted, archived: takeover.archived });
+
+          // 2b) 兜底：原会话既没删成也没归档成（回合停不掉，内核拒绝一切移除）。
+          //     此时**必须回滚副本**，否则就是「原会话 + 副本」两个同名会话——比
+          //     撤回失败更糟。回滚后撤回等价于「什么都没发生」，用户可稍后重试。
+          if (!takeover.deleted && !takeover.archived) {
+            log("warn", "recall", "原会话未能移除，回滚副本以保持列表干净", { newId: newId, sid: sid });
+            await rollbackForkedClone(props, newId, "recall");
+            setPrimaryButtonSendingState(false);
+            sendingRef.current = false;
+            showRecallError(L.turnOpenNotice || L.errGeneric);
+            return;
+          }
 
           // 稳健切换会话（多重通道与降级）
           var opened = safeOpenSession(newId, props);
@@ -2544,6 +2559,134 @@ window.__ModuleLoader__.load({
       });
     }
 
+    /**
+     * dsh-desktop patch (easyrewrite-recall-stop-then-takeover)：撤回前先停掉仍在跑的回合。
+     *
+     * 背景（2026-10-16 实机日志取证）：用户刚发完消息、模型还在生成时就点撤回，
+     * 内核会拒绝一切「移除原会话」的操作：
+     *   - deleteSession → `session-running: cannot delete a running session: stop it first`
+     *   - archiveSession → `workspace/session-active: cannot archive session ... (turn)`
+     * 于是 takeoverOldSession 的删除与降级归档**双双失败**（日志 deleted:false
+     * archived:false），原会话既没删也没归档 → 与 fork 出的副本并存 → 侧栏出现
+     * 两个同名会话。
+     *
+     * 修法：动原会话之前先把它停干净。撤回在语义上就是「这条不要了」，停掉正在跑的
+     * 回合完全符合用户预期（副产物：也顺带避免了 fork 撞上未闭合回合的 turn-open）。
+     *
+     * 停止通道与内核「停止生成」按钮同源：`sessions.scope(id).get("conversation").cancel()`。
+     * 全程 try/catch + 超时保护——停不掉也继续走后续流程（由 takeover 的降级路径兜底），
+     * 绝不让撤回本身失败。
+     *
+     * @param props - 组件 inject 面（ctxSessions）
+     * @param sessionId - 目标会话
+     * @param tag - 日志 tag
+     * @returns {Promise<boolean>} 是否成功发出停止请求
+     */
+    function stopRunningTurn(props, sessionId, tag) {
+      try {
+        var sessions = props && props.ctxSessions;
+        if (!sessions || typeof sessions.scope !== "function") {
+          log("warn", tag, "停止通道不可用（sessions.scope 缺失）", { sessionId: sessionId });
+          return Promise.resolve(false);
+        }
+        var scoped = sessions.scope(sessionId);
+        if (scoped === void 0 || typeof scoped.get !== "function") {
+          log("warn", tag, "停止通道不可用（scope 未解析）", { sessionId: sessionId });
+          return Promise.resolve(false);
+        }
+        var conversation = scoped.get("conversation");
+        if (conversation === void 0 || typeof conversation.cancel !== "function") {
+          log("warn", tag, "停止通道不可用（conversation.cancel 缺失）", { sessionId: sessionId });
+          return Promise.resolve(false);
+        }
+        log("info", tag, "撤回前先停止仍在跑的回合", { sessionId: sessionId });
+        return Promise.resolve(conversation.cancel()).then(function () {
+          log("info", tag, "停止请求已发出", { sessionId: sessionId });
+          return true;
+        }).catch(function (e) {
+          log("warn", tag, "停止请求失败（继续撤回流程）", { sessionId: sessionId, err: String(e && e.message ? e.message : e) });
+          return false;
+        });
+      } catch (e) {
+        log("warn", tag, "停止请求异常（继续撤回流程）", { sessionId: sessionId, err: String(e && e.message ? e.message : e) });
+        return Promise.resolve(false);
+      }
+    }
+
+    /** 等一小会儿让内核把 running 状态落下来（停止是异步的，立刻删仍可能被拒）。 */
+    function settleDelay(ms) {
+      return new Promise(function (resolve) { setTimeout(resolve, ms); });
+    }
+
+    /**
+     * dsh-desktop patch (easyrewrite-recall-stop-then-takeover)：原会话接管——
+     * 先停回合，再删除；删除被拒时短暂重试（等 running 落下），仍未成功才归档。
+     *
+     * 与 takeoverOldSession 的差别只在「更耐心」：内核的 session-running 拒绝是
+     * 瞬态的（回合刚被 cancel 但状态还没清），给两次短重试就能跨过去。
+     * 全部失败时返回 {deleted:false, archived:false}，由调用方决定是否回滚副本
+     * （见 recall 路径的 rollbackForkedClone）。
+     */
+    function takeoverOldSessionWithStop(props, sessionId, tag) {
+      return stopRunningTurn(props, sessionId, tag).then(function () {
+        // 停止是异步的：先等一下再删，避免拿 running 拒绝的假失败。
+        return settleDelay(250);
+      }).then(function () {
+        return takeoverOldSession(props, sessionId, tag);
+      }).then(function (res) {
+        if (res.deleted || res.archived) return res;
+        // 第一次没成（多半是回合刚停、状态未落）：稍等再试一次删除。
+        log("info", tag, "原会话首次未移除，200ms 后重试", { sessionId: sessionId });
+        return settleDelay(200).then(function () {
+          return archiveRetryDelete(props, sessionId, tag).then(function (second) {
+            return second.deleted ? second : res;
+          });
+        });
+      });
+    }
+
+    /** 只重试「删除」这一半（不再走归档，归档已在首轮试过）。 */
+    function archiveRetryDelete(props, sessionId, tag) {
+      var ws = props && props.ctxWorkspaces;
+      if (!ws || typeof ws.deleteSession !== "function") {
+        return Promise.resolve({ deleted: false, archived: false, error: null });
+      }
+      return Promise.resolve(ws.deleteSession(sessionId)).then(function () {
+        log("info", tag, "原会话已删除（重试成功）", { sessionId: sessionId });
+        return { deleted: true, archived: false, error: null };
+      }).catch(function (e) {
+        var msg = String(e && e.message ? e.message : e);
+        log("warn", tag, "原会话重试删除仍失败", { sessionId: sessionId, err: msg });
+        return { deleted: false, archived: false, error: msg };
+      });
+    }
+
+    /**
+     * dsh-desktop patch (easyrewrite-recall-stop-then-takeover)：回滚刚 fork 出的副本。
+     *
+     * 触发条件：原会话**既没删成也没归档成**（回合仍在跑、内核拒绝一切移除）。
+     * 此时若保留副本，用户就会看到「原会话 + 副本」两个同名会话——比撤回失败更糟。
+     * 因此把副本删掉、清掉它的 resume-send 草稿，让撤回退化为「什么都没发生」：
+     * 原会话仍在原地，用户稍后重试即可。
+     *
+     * @returns {Promise<boolean>} 是否成功清理副本
+     */
+    function rollbackForkedClone(props, cloneId, tag) {
+      try { localStorage.removeItem("dsh-easyrewrite:resume-send:" + cloneId); } catch (e) { /* ignore */ }
+      var ws = props && props.ctxWorkspaces;
+      if (!ws || typeof ws.deleteSession !== "function") {
+        log("warn", tag, "回滚副本失败（deleteSession 不可用）", { cloneId: cloneId });
+        return Promise.resolve(false);
+      }
+      return Promise.resolve(ws.deleteSession(cloneId)).then(function () {
+        log("info", tag, "已回滚副本（撤回未生效，保持原状）", { cloneId: cloneId });
+        return true;
+      }).catch(function (e) {
+        log("warn", tag, "回滚副本失败（用户可见重复会话）", { cloneId: cloneId, err: String(e && e.message ? e.message : e) });
+        return false;
+      });
+    }
+
     /** 旧语义兜底：归档原会话（takeover 的降级分支，保持原行为不变）。 */
     function archiveOnly(props, sessionId, tag) {
       try {
@@ -3675,11 +3818,20 @@ window.__ModuleLoader__.load({
               stagedDraft: stagedDraftPayload
             }));
           } catch (e) { /* ignore */ }
-          // dsh-desktop patch (easyrewrite-recalled-session-takeover)：原会话交给
-          // takeoverOldSession 处理（优先删除 → 副本接管，用户看不出新建；删除被拒
-          // 时自动退回归档）。替换原先直接 archiveSession 的写法。
-          var editTakeover = await takeoverOldSession(props, sid, "edit");
+          // dsh-desktop patch (easyrewrite-recall-stop-then-takeover)：与撤回路径同款——
+          // 先停回合再接管（否则内核拒绝删除/归档，原会话与副本并存 → 两个同名会话）。
+          var editTakeover = await takeoverOldSessionWithStop(props, sid, "edit");
           log("info", "edit", "编辑重发：原会话接管完成 + 打开新会话", { newId: newId, deleted: editTakeover.deleted, archived: editTakeover.archived });
+
+          // 兜底：原会话未能移除 → 回滚副本，避免出现两个同名会话。
+          if (!editTakeover.deleted && !editTakeover.archived) {
+            log("warn", "edit", "原会话未能移除，回滚副本以保持列表干净", { newId: newId, sid: sid });
+            await rollbackForkedClone(props, newId, "edit");
+            setPrimaryButtonSendingState(false);
+            setEditing(true);
+            setOpError(L.turnOpenNotice || L.errGeneric);
+            return;
+          }
 
           var opened2 = safeOpenSession(newId, props);
           if (!opened2) {
