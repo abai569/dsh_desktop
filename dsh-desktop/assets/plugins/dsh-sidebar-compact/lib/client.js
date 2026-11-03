@@ -134,17 +134,29 @@
   // 内核只把 data-row-key="workspace:<uuid>" 挂到 DOM 上，没暴露路径，
   // 故按行内标题文本匹配（该工作区标题固定为 DS Bot）。
   //
-  // ⚠ 匹配必须放宽为 /DS\s*Bot/i（不加 (^|\s)/(\s|$) 边界）：行内 textContent 前面常带
-  // 图标字符（鲸鱼是 svg 元素不受影响，但字体图标/emoji 会混进文本），有边界断言会判不中
-  // ——2026-11-03 实机就是这条让 DS Bot 行没被折叠。作用域已由
-  // [data-row-key^="workspace:"] 限定到工作区行，放宽不会误伤会话行。
+  // ⚠ 三处都必须放宽，缺一条实机就漏（2026-11-03 两轮踩过）：
+  //   ① 不加 (^|\s)/(\s|$) 边界 —— 行内 textContent 前会混进图标字符（鲸鱼是 svg
+  //      元素本不受影响，但字体图标/emoji 会进文本），有边界断言判不中；
+  //   ② 不能只读 textContent —— rail（折叠）形态下标题可能只挂在 title/aria-label 上，
+  //      textContent 是空串；
+  //   ③ 子元素上可能带 title（图标 button 自带 aria-label），故一并把子树的
+  //      [title]/[aria-label] 拼进检索串。
+  // 作用域已由 [data-row-key^="workspace:"] 限定到工作区行，放宽不会误伤会话行。
   function markDsBotRows() {
     var rows;
     try { rows = document.querySelectorAll('[data-row-key^="workspace:"]'); }
     catch (e) { return; }
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
-      var text = (row.textContent || '').replace(/\s+/g, ' ').trim();
+      var parts = [(row.textContent || '')];
+      try {
+        parts.push(row.getAttribute('title') || '', row.getAttribute('aria-label') || '');
+        var inner = row.querySelectorAll('[title],[aria-label]');
+        for (var k = 0; k < inner.length; k++) {
+          parts.push(inner[k].getAttribute('title') || '', inner[k].getAttribute('aria-label') || '');
+        }
+      } catch (e) { /* 属性收集失败就用 textContent 兜底 */ }
+      var text = parts.join(' ').replace(/\s+/g, ' ').trim();
       var hit = /DS\s*Bot/i.test(text);
       try {
         if (hit) {

@@ -110,10 +110,11 @@ function boot({ width = 400, stored = {}, workspaceRows = [] } = {}) {
   body.appendChild(sidebar);
 
   // 工作区行
-  for (const { text, key } of workspaceRows) {
+  for (const { text, key, attrs } of workspaceRows) {
     const row = new El('div');
     row.textContent = text;
     row.setAttribute('data-row-key', key);
+    if (attrs) for (const [k, v] of Object.entries(attrs)) row.setAttribute(k, v);
     sidebar.appendChild(row);
   }
 
@@ -301,6 +302,23 @@ test('反证：行文本带图标字符前缀时 DS Bot 仍需命中（边界断
     '图标前缀 + 后缀文本时也应命中');
   assert.equal(byKey('workspace:ccc').getAttribute('data-dsh-hide-row'), null,
     '普通行仍不该被标记');
+});
+
+test('反证：文本只挂在 title 属性上时仍需命中（rail 形态）', () => {
+  // rail（折叠）形态下工作区行可能只渲染图标，标题落在 title/aria-label 上，
+  // textContent 是空串。只读 textContent 会漏判，故检索串必须把属性也拼进来。
+  const { body } = boot({
+    workspaceRows: [
+      { text: '', key: 'workspace:aaa', attrs: { title: 'DS Bot' } },
+      { text: '', key: 'workspace:bbb', attrs: { 'aria-label': 'DS Bot 工作区' } },
+      { text: '', key: 'workspace:ccc', attrs: { title: 'hongguoTV' } },
+    ],
+  });
+  const rows = querySelectorAll(body, '[data-row-key^="workspace:"]');
+  const byKey = (k) => rows.find((r) => r.getAttribute('data-row-key') === k);
+  assert.equal(byKey('workspace:aaa').getAttribute('data-dsh-hide-row'), '1', 'title 命中应标记');
+  assert.equal(byKey('workspace:bbb').getAttribute('data-dsh-hide-row'), '1', 'aria-label 命中应标记');
+  assert.equal(byKey('workspace:ccc').getAttribute('data-dsh-hide-row'), null, '无关标题不得误伤');
 });
 
 test('标记是幂等的：重复 apply 不改变结果', () => {
