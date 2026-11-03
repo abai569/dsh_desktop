@@ -89,6 +89,15 @@
     // 各插件自带的 footer 按钮：统一压成紧凑行高（原样式多为 36-40px，这里收到 30px）。
     '[class*="_footerActions"] button{min-height:30px !important;height:30px !important;padding-top:0 !important;padding-bottom:0 !important;margin-top:0 !important;margin-bottom:0 !important;}',
     '[class*="_settingsArea"]{padding-top:0 !important;padding-bottom:0 !important;margin-top:0 !important;}',
+    // 轮次导航器（内核 TurnNavigator）常驻：内核有一条容器查询
+    //   @container (width<=900px){ .eGxaPq_frame{display:none} }
+    // 容器是 .eGxaPq_slot（left:0;right:0 + container-type:inline-size），量的是**中栏宽度**，
+    // 于是窗口稍窄（中栏跌破 900px）整条消息刻度就消失——用户 2026-11-04 报「窗口小了就没了」。
+    // 这里用 !important 压过那条（它不带 important，important 在任意作用域都优先），
+    // 选择器用 :has() 锁「含 _marks 的 _frame」，只有 TurnNavigator 命中，
+    // 不会误伤其它带 _frame 的组件（attachment 等）。WebView2 = Chromium，:has() 可用。
+    // 代价：窄窗口下它 absolute 盖在中栏右侧 12px 处，可能压住长行文本末尾。
+    '[class*="_frame"]:has([class*="_marks"]){display:block !important;}',
   ].join('\n');
 
   function ensureCss() {

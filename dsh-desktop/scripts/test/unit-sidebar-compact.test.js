@@ -278,6 +278,20 @@ test('底部区块间距压缩：footArea / footerActions / settingsArea 四处�
   assert.match(css, /\[class\*="_settingsArea"\]\{padding-top:0/, '余额行内边距应归零');
 });
 
+test('轮次导航器强制常驻：覆盖内核 TurnNavigator 的 900px 容器查询', () => {
+  // 内核 @deepseek-ai/dsh-client-ui-chat 有一条
+  //   @container (width<=900px){ .eGxaPq_frame{display:none} }
+  // 容器量的是中栏宽度，窗口稍窄整条消息刻度就消失。本插件用 !important 压过它。
+  const css = boot().core.CSS;
+  // 用字符串断言而不是正则：`[class*="_frame"]` 在正则里是字符类，必须逐字符转义，
+  // 极易在生成/复制时丢掉反斜杠而静默变成「匹配任意单字符」的假判据（本次就踩了）。
+  assert.ok(css.includes('[class*="_frame"]:has([class*="_marks"]){display:block !important;}'),
+    '必须有 :has() 精确锁定的 TurnNavigator 常驻规则');
+  // 反证：不得出现不带 :has 限定的裸 _frame 选择器（那会误伤 attachment 等其它 _frame 组件）
+  assert.ok(!css.includes('[class*="_frame"]{display:block'),
+    '不得使用不带 :has(_marks) 限定的裸 _frame 选择器');
+});
+
 test('反证：DS Bot 行改为保留显示，不得再有隐藏规则', () => {
   // 2026-11-04 用户改口：DS Bot 留着不隐藏，只压间距。
   const css = boot().core.CSS;
