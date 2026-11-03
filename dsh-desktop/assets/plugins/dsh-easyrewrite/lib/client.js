@@ -1532,14 +1532,36 @@ window.__ModuleLoader__.load({
 
     // 渲染消息图片缩略图：直调官方 renderMessageImages（官方 ImageGallery：大图/宫格/lightbox/重试）。
     // 方法论 review #1：chat.node 注入必带该 prop，自绘 <img> 兜底属重复造轮子——已删；失败 warn 不静默。
+    //
+    // dsh-desktop patch (easyrewrite-image-render-fallback)：
+    // 内核 0.2.1-rc.4 把 chat.node 的 renderMessageImages 注入面整体移除了（全闭包 grep
+    // 0 命中），取而代之的是两代都在的 loadImage(attachment) → Promise<url>。原实现只认
+    // renderMessageImages，rc.4 下必然命中「prop 缺失」分支 return null —— 于是用户消息里
+    // 的图片上传成功却渲染不出来（2026-11-03 实机日志取证：反复 warn
+    // "renderMessageImages prop 缺失…图片无法渲染"）。
+    //
+    // 修法：renderMessageImages 缺失时降级到 loadImage + PendingOriginalImage（与下方 edit
+    // 路径第 3606 行已有的兜底同款，异步解析 → <img>，复刻原生气泡内图片观感）。
+    // renderMessageImages 仍存在时行为不变；loadImage 在 rc.2/rc.4 两代都有，向后兼容。
     function renderMessageImagesCompat(images, props) {
       if (!images || images.length === 0) return null;
-      if (!props || typeof props.renderMessageImages !== "function") {
-        log("warn", "attach", "renderMessageImages prop 缺失（官方注入面变化？），图片无法渲染");
-        return null;
+      if (props && typeof props.renderMessageImages === "function") {
+        try { return props.renderMessageImages({ images: images, align: "end" }); }
+        catch (e) { log("warn", "attach", "官方图片渲染抛错", { err: String(e && e.message ? e.message : e) }); return null; }
       }
-      try { return props.renderMessageImages({ images: images, align: "end" }); }
-      catch (e) { log("warn", "attach", "官方图片渲染抛错", { err: String(e && e.message ? e.message : e) }); return null; }
+      if (props && typeof props.loadImage === "function") {
+        return React.createElement("div", {
+          style: { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", marginBottom: "4px" }
+        },
+          images.map(function (im, idx) {
+            var ref = im && im.attachment;
+            if (ref === void 0) return null;
+            return React.createElement(PendingOriginalImage, { key: idx, ref: ref, loadImage: props.loadImage });
+          })
+        );
+      }
+      log("warn", "attach", "renderMessageImages 与 loadImage 均缺失，图片无法渲染");
+      return null;
     }
 
     function iconImg(src, alt, size) {
