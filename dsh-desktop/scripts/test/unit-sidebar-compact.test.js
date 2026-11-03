@@ -181,7 +181,7 @@ test('注册形态：id 正确、inject 为空（纯客户端）', () => {
   assert.equal(typeof exportsObj.apply, 'function');
 });
 
-test('CSS 口径：整组折叠 + 手机隐藏 footerActions + 折叠头样式', () => {
+test('CSS 口径：整组折叠 + 手机隐藏 footerActions + 折叠头样式 + 配对 iPhone 精准隐藏', () => {
   const css = boot().core.CSS;
   assert.match(css, /html\[data-dsh-panel-collapsed="1"\] \[class\*="_panelList"\]\{display:none/,
     '折叠必须作用于整组 _panelList');
@@ -189,6 +189,14 @@ test('CSS 口径：整组折叠 + 手机隐藏 footerActions + 折叠头样式',
   assert.match(css, /@media \(max-width: 720px\)/, '手机断点应是 720px');
   assert.match(css, /#dsh-panel-toggle\{/, '必须有折叠头样式');
   assert.match(css, /rotate\(-90deg\)/, '折叠态箭头应旋转');
+  // 配对 iPhone：桌面端也要隐藏（手机端另有 footerActions 整块隐藏兜底）。
+  // 该规则必须出现在 @media 之外——写成「只对手机生效」就退回 v1.0.9 的老毛病。
+  assert.match(css, /button\[data-dsh-plugin="remote-bridge"\]\[data-dsh-part="entry"\]\{display:none/,
+    '配对 iPhone 入口必须按 remote-bridge 的稳定属性精准隐藏');
+  const mediaAt = css.indexOf('@media (max-width: 720px)');
+  const bridgeAt = css.indexOf('data-dsh-plugin="remote-bridge"');
+  assert.ok(bridgeAt >= 0 && bridgeAt < mediaAt,
+    '配对 iPhone 隐藏规则必须在 @media 之外（否则桌面端又冒出来）');
 });
 
 test('反证：不得单独隐藏 _panelRow（那会把面板本体删掉）', () => {
@@ -273,6 +281,26 @@ test('DS Bot 工作区行打标，其它行不误伤', () => {
   assert.equal(byText('DS Bot').getAttribute('data-dsh-hide-row'), '1', 'DS Bot 行应被标记');
   assert.equal(byText('hongguoTV').getAttribute('data-dsh-hide-row'), null, '普通行不该被标记');
   assert.equal(byText('dsh_desktop').getAttribute('data-dsh-hide-row'), null);
+});
+
+test('反证：行文本带图标字符前缀时 DS Bot 仍需命中（边界断言会漏）', () => {
+  // 2026-11-03 实机：行内 textContent 前面混进图标字符，旧的 /(^|\s)DS\s*Bot(\s|$)/ 判不中，
+  // 于是 DS Bot 行一直没被折叠。放宽成 /DS\s*Bot/i 后必须命中。
+  const { body } = boot({
+    workspaceRows: [
+      { text: '\u{1F40B}DS Bot', key: 'workspace:aaa' },
+      { text: '\u25CF DS Bot 工作区', key: 'workspace:bbb' },
+      { text: 'hongguoTV', key: 'workspace:ccc' },
+    ],
+  });
+  const rows = querySelectorAll(body, '[data-row-key^="workspace:"]');
+  const byKey = (k) => rows.find((r) => r.getAttribute('data-row-key') === k);
+  assert.equal(byKey('workspace:aaa').getAttribute('data-dsh-hide-row'), '1',
+    '图标前缀 + 无空格时也应命中');
+  assert.equal(byKey('workspace:bbb').getAttribute('data-dsh-hide-row'), '1',
+    '图标前缀 + 后缀文本时也应命中');
+  assert.equal(byKey('workspace:ccc').getAttribute('data-dsh-hide-row'), null,
+    '普通行仍不该被标记');
 });
 
 test('标记是幂等的：重复 apply 不改变结果', () => {

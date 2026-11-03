@@ -62,7 +62,13 @@
     '#' + TOGGLE_ID + ':hover{background:rgba(127,127,127,.12);opacity:1;}',
     '#' + TOGGLE_ID + ' .dsh-pt-arrow{font-size:10px;line-height:1;opacity:.8;transition:transform .15s ease;}',
     'html[data-dsh-panel-collapsed="1"] #' + TOGGLE_ID + ' .dsh-pt-arrow{transform:rotate(-90deg);}',
-    // 手机：整块隐藏 footer.action（工具箱 / 手机访问 / 配对 iPhone）
+    // 配对 iPhone：精准隐藏（桌面 + 手机都收掉）。该入口是 @linxin666/dsh-remote-bridge
+    // 的 trigger 按钮，自带两个稳定属性 data-dsh-plugin="remote-bridge" /
+    // data-dsh-part="entry"（见其 lib/client.js 的 PLUGIN_ATTR / PART_ENTRY），
+    // 按属性定位比按文案或样式类都稳。用户反馈它「占了很大高度」且不用 iOS 内测 App，
+    // 故桌面端也一并隐藏（手机端另有 footerActions 整块隐藏兜底）。
+    'button[data-dsh-plugin="remote-bridge"][data-dsh-part="entry"]{display:none !important;}',
+    // 手机：整块隐藏 footer.action（工具箱 / 手机访问）
     '@media (max-width: ' + MOBILE_MAX + 'px){',
     '  [class*="_footerActions"]{display:none !important;}',
     '  [class*="_regionArea"]{padding-bottom:8px !important;}',
@@ -121,6 +127,11 @@
   // ───────────────────────── DS Bot 工作区行 ─────────────────────────
   // 内核只把 data-row-key="workspace:<uuid>" 挂到 DOM 上，没暴露路径，
   // 故按行内标题文本匹配（该工作区标题固定为 DS Bot）。
+  //
+  // ⚠ 匹配必须放宽为 /DS\s*Bot/i（不加 (^|\s)/(\s|$) 边界）：行内 textContent 前面常带
+  // 图标字符（鲸鱼是 svg 元素不受影响，但字体图标/emoji 会混进文本），有边界断言会判不中
+  // ——2026-11-03 实机就是这条让 DS Bot 行没被折叠。作用域已由
+  // [data-row-key^="workspace:"] 限定到工作区行，放宽不会误伤会话行。
   function markDsBotRows() {
     var rows;
     try { rows = document.querySelectorAll('[data-row-key^="workspace:"]'); }
@@ -128,7 +139,7 @@
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
       var text = (row.textContent || '').replace(/\s+/g, ' ').trim();
-      var hit = /(^|\s)DS\s*Bot(\s|$)/i.test(text);
+      var hit = /DS\s*Bot/i.test(text);
       try {
         if (hit) {
           if (row.getAttribute(DSBOT_ATTR) !== '1') row.setAttribute(DSBOT_ATTR, '1');
