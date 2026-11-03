@@ -267,66 +267,22 @@ test('无 panelList 时不炸（panels 为空的内核形态）', () => {
   assert.doesNotThrow(() => loaded.factory().apply(), '缺 panelList 时 apply 不得抛异常');
 });
 
-// ───────────────────────── 3. DS Bot 工作区行 ─────────────────────────
+// ───────────────────────── 3. 底部间距压缩 ─────────────────────────
 
-test('DS Bot 工作区行打标，其它行不误伤', () => {
-  const { body } = boot({
-    workspaceRows: [
-      { text: 'DS Bot', key: 'workspace:aaa' },
-      { text: 'hongguoTV', key: 'workspace:bbb' },
-      { text: 'dsh_desktop', key: 'workspace:ccc' },
-    ],
-  });
-  const rows = querySelectorAll(body, '[data-row-key^="workspace:"]');
-  const byText = (t) => rows.find((r) => r.textContent === t);
-  assert.equal(byText('DS Bot').getAttribute('data-dsh-hide-row'), '1', 'DS Bot 行应被标记');
-  assert.equal(byText('hongguoTV').getAttribute('data-dsh-hide-row'), null, '普通行不该被标记');
-  assert.equal(byText('dsh_desktop').getAttribute('data-dsh-hide-row'), null);
+test('底部区块间距压缩：footArea / footerActions / settingsArea 四处都收紧', () => {
+  const css = boot().core.CSS;
+  assert.match(css, /\[class\*="_footArea"\]\{margin-top:2px/, 'footArea 上间距应收紧');
+  assert.match(css, /\[class\*="_footerActions"\]\{gap:0/, 'footerActions 的 gap 应归零');
+  assert.match(css, /\[class\*="_footerActions"\] button\{min-height:30px/,
+    'footer 内各插件自带按钮应压到 30px 紧凑行高');
+  assert.match(css, /\[class\*="_settingsArea"\]\{padding-top:0/, '余额行内边距应归零');
 });
 
-test('反证：行文本带图标字符前缀时 DS Bot 仍需命中（边界断言会漏）', () => {
-  // 2026-11-03 实机：行内 textContent 前面混进图标字符，旧的 /(^|\s)DS\s*Bot(\s|$)/ 判不中，
-  // 于是 DS Bot 行一直没被折叠。放宽成 /DS\s*Bot/i 后必须命中。
-  const { body } = boot({
-    workspaceRows: [
-      { text: '\u{1F40B}DS Bot', key: 'workspace:aaa' },
-      { text: '\u25CF DS Bot 工作区', key: 'workspace:bbb' },
-      { text: 'hongguoTV', key: 'workspace:ccc' },
-    ],
-  });
-  const rows = querySelectorAll(body, '[data-row-key^="workspace:"]');
-  const byKey = (k) => rows.find((r) => r.getAttribute('data-row-key') === k);
-  assert.equal(byKey('workspace:aaa').getAttribute('data-dsh-hide-row'), '1',
-    '图标前缀 + 无空格时也应命中');
-  assert.equal(byKey('workspace:bbb').getAttribute('data-dsh-hide-row'), '1',
-    '图标前缀 + 后缀文本时也应命中');
-  assert.equal(byKey('workspace:ccc').getAttribute('data-dsh-hide-row'), null,
-    '普通行仍不该被标记');
-});
-
-test('反证：文本只挂在 title 属性上时仍需命中（rail 形态）', () => {
-  // rail（折叠）形态下工作区行可能只渲染图标，标题落在 title/aria-label 上，
-  // textContent 是空串。只读 textContent 会漏判，故检索串必须把属性也拼进来。
-  const { body } = boot({
-    workspaceRows: [
-      { text: '', key: 'workspace:aaa', attrs: { title: 'DS Bot' } },
-      { text: '', key: 'workspace:bbb', attrs: { 'aria-label': 'DS Bot 工作区' } },
-      { text: '', key: 'workspace:ccc', attrs: { title: 'hongguoTV' } },
-    ],
-  });
-  const rows = querySelectorAll(body, '[data-row-key^="workspace:"]');
-  const byKey = (k) => rows.find((r) => r.getAttribute('data-row-key') === k);
-  assert.equal(byKey('workspace:aaa').getAttribute('data-dsh-hide-row'), '1', 'title 命中应标记');
-  assert.equal(byKey('workspace:bbb').getAttribute('data-dsh-hide-row'), '1', 'aria-label 命中应标记');
-  assert.equal(byKey('workspace:ccc').getAttribute('data-dsh-hide-row'), null, '无关标题不得误伤');
-});
-
-test('标记是幂等的：重复 apply 不改变结果', () => {
-  const ctx = boot({ workspaceRows: [{ text: 'DS Bot', key: 'workspace:aaa' }] });
-  ctx.core.apply();
-  ctx.core.apply();
-  const row = querySelector(ctx.body, '[data-row-key^="workspace:"]');
-  assert.equal(row.getAttribute('data-dsh-hide-row'), '1');
+test('反证：DS Bot 行改为保留显示，不得再有隐藏规则', () => {
+  // 2026-11-04 用户改口：DS Bot 留着不隐藏，只压间距。
+  const css = boot().core.CSS;
+  assert.ok(!css.includes('data-dsh-hide-row'), 'CSS 里不得再有 data-dsh-hide-row 隐藏规则');
+  assert.ok(!/DS\s*Bot/i.test(css), 'CSS 里不得再有 DS Bot 文本匹配规则');
 });
 
 // ───────────────────────── 4. 窄屏强制经典 ─────────────────────────

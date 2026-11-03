@@ -27,7 +27,6 @@
   var MOBILE_MAX = 720;
   var STYLE_ID = 'dsh-sidebar-compact-style';
   var TOGGLE_ID = 'dsh-panel-toggle';
-  var DSBOT_ATTR = 'data-dsh-hide-row';
   var SCAN_INTERVAL_MS = 1200;
 
   function isMobile() {
@@ -79,8 +78,17 @@
     '  [class*="_footerActions"]{display:none !important;}',
     '  [class*="_regionArea"]{padding-bottom:8px !important;}',
     '}',
-    // DS Bot 工作区行
-    '[' + DSBOT_ATTR + '="1"]{display:none !important;}',
+    // 底部区块收紧（2026-11-04 用户点名：DS Bot / 工具箱 / 手机访问 / 余额这几项之间空太多）。
+    // DS Bot 行改为**保留显示**，只压间距，不再隐藏。
+    // 四个来源：footArea 与上方工作区列表的间距、footerActions 内部各按钮的上下留白、
+    // footerActions 与 settingsArea（余额行）之间、以及 settingsArea 自身的内边距。
+    '[class*="_footArea"]{margin-top:2px !important;padding-top:0 !important;}',
+    '[class*="_footArea"] > *{margin-top:0 !important;margin-bottom:0 !important;}',
+    '[class*="_footerActions"]{gap:0 !important;padding-top:0 !important;padding-bottom:0 !important;}',
+    '[class*="_footerActions"] > *{margin-top:0 !important;margin-bottom:0 !important;padding-top:0 !important;padding-bottom:0 !important;}',
+    // 各插件自带的 footer 按钮：统一压成紧凑行高（原样式多为 36-40px，这里收到 30px）。
+    '[class*="_footerActions"] button{min-height:30px !important;height:30px !important;padding-top:0 !important;padding-bottom:0 !important;margin-top:0 !important;margin-bottom:0 !important;}',
+    '[class*="_settingsArea"]{padding-top:0 !important;padding-bottom:0 !important;margin-top:0 !important;}',
   ].join('\n');
 
   function ensureCss() {
@@ -130,44 +138,6 @@
     } catch (e) { }
   }
 
-  // ───────────────────────── DS Bot 工作区行 ─────────────────────────
-  // 内核只把 data-row-key="workspace:<uuid>" 挂到 DOM 上，没暴露路径，
-  // 故按行内标题文本匹配（该工作区标题固定为 DS Bot）。
-  //
-  // ⚠ 三处都必须放宽，缺一条实机就漏（2026-11-03 两轮踩过）：
-  //   ① 不加 (^|\s)/(\s|$) 边界 —— 行内 textContent 前会混进图标字符（鲸鱼是 svg
-  //      元素本不受影响，但字体图标/emoji 会进文本），有边界断言判不中；
-  //   ② 不能只读 textContent —— rail（折叠）形态下标题可能只挂在 title/aria-label 上，
-  //      textContent 是空串；
-  //   ③ 子元素上可能带 title（图标 button 自带 aria-label），故一并把子树的
-  //      [title]/[aria-label] 拼进检索串。
-  // 作用域已由 [data-row-key^="workspace:"] 限定到工作区行，放宽不会误伤会话行。
-  function markDsBotRows() {
-    var rows;
-    try { rows = document.querySelectorAll('[data-row-key^="workspace:"]'); }
-    catch (e) { return; }
-    for (var i = 0; i < rows.length; i++) {
-      var row = rows[i];
-      var parts = [(row.textContent || '')];
-      try {
-        parts.push(row.getAttribute('title') || '', row.getAttribute('aria-label') || '');
-        var inner = row.querySelectorAll('[title],[aria-label]');
-        for (var k = 0; k < inner.length; k++) {
-          parts.push(inner[k].getAttribute('title') || '', inner[k].getAttribute('aria-label') || '');
-        }
-      } catch (e) { /* 属性收集失败就用 textContent 兜底 */ }
-      var text = parts.join(' ').replace(/\s+/g, ' ').trim();
-      var hit = /DS\s*Bot/i.test(text);
-      try {
-        if (hit) {
-          if (row.getAttribute(DSBOT_ATTR) !== '1') row.setAttribute(DSBOT_ATTR, '1');
-        } else if (row.getAttribute(DSBOT_ATTR) !== null) {
-          row.removeAttribute(DSBOT_ATTR);
-        }
-      } catch (e) { /* 单行失败继续 */ }
-    }
-  }
-
   // ───────────────────────── 窄屏强制经典模式 ─────────────────────────
   function forceClassicOnMobile() {
     if (!isMobile()) return;
@@ -183,7 +153,6 @@
     ensureCss();
     syncCollapsedAttr();
     ensureToggle();
-    markDsBotRows();
   }
 
   var pending = false;
@@ -224,7 +193,6 @@
       CSS: CSS,
       collapsed: collapsed,
       isMobile: isMobile,
-      markDsBotRows: markDsBotRows,
       apply: apply,
     };
   }
