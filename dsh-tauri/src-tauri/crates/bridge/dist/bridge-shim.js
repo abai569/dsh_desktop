@@ -1164,6 +1164,155 @@
   } catch (e) { probeClientUpdate(); }
   listeners.clientUpdate.push(handleClientUpdateAvailable);
 
+  // ---- 侧栏精简（dsh-desktop: sidebar-compact）--------------------------
+  // 目的：把侧栏里「导航类」的两块收起来，让工作区列表占满视野。
+  //   · sidebar.panellist（插件商店 / 任务看板 / 智能体 / 更多）→ 桌面 + 手机都折叠
+  //   · sidebar.footer.action（工具箱 / 手机访问 / 配对 iPhone）→ 仅手机隐藏
+  //   · DS Bot 工作区行 → 折叠（DS Bot 的 team workspace，在工作区列表里单列一行）
+  //   · 窄屏每次打开都强制经典 Agent 模式（不让手机落到 Bot 界面）
+  //
+  // 「折叠」不是消失：注入一个浮动小按钮（左下角），点一下展开/收起，状态存
+  // localStorage，免得用户再也找不到入口。CSS 用 [class*="_panelList"] 这类属性
+  // 选择器匹配，因为内核 CSS module 的类名带构建哈希前缀（如 hHd-Xa_panelList），
+  // 版本间会变；属性选择器只认后缀，抗哈希漂移。
+  try {
+    (function () {
+      var KEY_COLLAPSED = 'dsh-desktop:navCollapsed';
+      var MOBILE_MAX = 720;
+      var STYLE_ID = 'dsh-desktop-sidebar-compact-style';
+      var BTN_ID = 'dsh-desktop-nav-toggle';
+      var DSBOT_ATTR = 'data-dsh-hide-row';
+
+      function isMobile() {
+        try { return window.matchMedia('(max-width: ' + MOBILE_MAX + 'px)').matches; }
+        catch (e) { return (window.innerWidth || 0) <= MOBILE_MAX; }
+      }
+
+      function collapsed() {
+        try {
+          var v = window.localStorage.getItem(KEY_COLLAPSED);
+          return v === null ? true : v === '1';   // 缺省收起
+        } catch (e) { return true; }
+      }
+
+      function setCollapsed(on) {
+        try { window.localStorage.setItem(KEY_COLLAPSED, on ? '1' : '0'); } catch (e) { }
+        apply();
+      }
+
+      function ensureStyle() {
+        if (document.getElementById(STYLE_ID)) return;
+        var st = document.createElement('style');
+        st.id = STYLE_ID;
+        st.textContent = [
+          'html[data-dsh-nav-collapsed="1"] [class*="_panelList"] { display: none !important; }',
+          '[' + DSBOT_ATTR + '="1"] { display: none !important; }',
+          '@media (max-width: ' + MOBILE_MAX + 'px) {',
+          '  [class*="_footerActions"] { display: none !important; }',
+          '  [class*="_regionArea"] { padding-bottom: 8px !important; }',
+          '}',
+          '#' + BTN_ID + ' {',
+          '  position: fixed; left: 8px; bottom: 8px; z-index: 2147483000;',
+          '  width: 30px; height: 30px; border-radius: 8px;',
+          '  border: 1px solid rgba(128,128,128,.35);',
+          '  background: rgba(30,30,32,.82); color: #ddd;',
+          '  font: 15px/1 ui-monospace, monospace; cursor: pointer;',
+          '  display: none; align-items: center; justify-content: center;',
+          '  box-shadow: 0 2px 10px rgba(0,0,0,.28); padding: 0;',
+          '}',
+          '#' + BTN_ID + '[data-show="1"] { display: flex; }'
+        ].join('\n');
+        (document.head || document.documentElement).appendChild(st);
+      }
+
+      function ensureButton() {
+        var btn = document.getElementById(BTN_ID);
+        if (btn) return btn;
+        btn = document.createElement('button');
+        btn.id = BTN_ID;
+        btn.type = 'button';
+        btn.title = '显示/隐藏 导航与工具箱';
+        btn.setAttribute('aria-label', '显示或隐藏导航');
+        btn.addEventListener('click', function () { setCollapsed(!collapsed()); });
+        (document.body || document.documentElement).appendChild(btn);
+        return btn;
+      }
+
+      // DS Bot 工作区行：内核只把 data-row-key="workspace:<uuid>" 挂到 DOM 上，
+      // 没有暴露路径，故按行内标题文本匹配（该工作区标题固定为 DS Bot）。
+      function markDsBotRows() {
+        var rows = document.querySelectorAll('[data-row-key^="workspace:"]');
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i];
+          var text = (row.textContent || '').replace(/\s+/g, ' ').trim();
+          var hit = /(^|\s)DS\s*Bot(\s|$)/i.test(text);
+          if (hit) {
+            if (row.getAttribute(DSBOT_ATTR) !== '1') row.setAttribute(DSBOT_ATTR, '1');
+          } else if (row.getAttribute(DSBOT_ATTR) !== null) {
+            row.removeAttribute(DSBOT_ATTR);
+          }
+        }
+      }
+
+      // 手机每次打开都强制经典模式（ds-bot 自己读写 ds-bot:surface）。
+      function forceClassicOnMobile() {
+        if (!isMobile()) return;
+        try {
+          if (window.localStorage.getItem('ds-bot:surface') !== 'agent') {
+            window.localStorage.setItem('ds-bot:surface', 'agent');
+          }
+        } catch (e) { }
+      }
+
+      function apply() {
+        ensureStyle();
+        var on = collapsed();
+        var root = document.documentElement;
+        if (root.getAttribute('data-dsh-nav-collapsed') !== (on ? '1' : '0')) {
+          root.setAttribute('data-dsh-nav-collapsed', on ? '1' : '0');
+        }
+        var btn = ensureButton();
+        btn.textContent = on ? '\u22EF' : '\u00D7';   // ⋯ / ×
+        btn.setAttribute('data-show', '1');
+        markDsBotRows();
+      }
+
+      // 内核是 React 渲染、按需重挂，故用 MutationObserver 持续补标。
+      var pending = false;
+      function schedule() {
+        if (pending) return;
+        pending = true;
+        (window.requestAnimationFrame || window.setTimeout)(function () {
+          pending = false;
+          try { apply(); } catch (e) { }
+        }, 16);
+      }
+
+      function boot() {
+        try {
+          ensureStyle();
+          forceClassicOnMobile();
+          apply();
+          new MutationObserver(schedule).observe(document.documentElement, {
+            childList: true, subtree: true
+          });
+          try {
+            var mq = window.matchMedia('(max-width: ' + MOBILE_MAX + 'px)');
+            var onMq = function () { forceClassicOnMobile(); schedule(); };
+            if (mq.addEventListener) mq.addEventListener('change', onMq);
+            else if (mq.addListener) mq.addListener(onMq);
+          } catch (e) { }
+        } catch (e) { /* 侧栏精简绝不能影响宿主 */ }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot, { once: true });
+      } else {
+        boot();
+      }
+    })();
+  } catch (e) { /* 同上：防御性兜底 */ }
+
   // ---- 文件拖放转发（F1）已于 2026-10 随文件拖放插件裁撤整体移除：壳侧不再
   // 广播该事件，页面级 CustomEvent 与全屏悬停提示层一并撤除，无残留消费方。
 })();
