@@ -51,15 +51,21 @@
   var CSS = [
     // 折叠态：整组 panelList 收起（不是删单个按钮）
     'html[data-dsh-panel-collapsed="1"] [class*="_panelList"]{display:none !important;}',
-    // 折叠头：整行、左标题右箭头，仿内核设置页那种披露行
+    // 折叠头：整行、左标题右箭头。
+    // 排版基准对齐侧栏自带的「工作区」分组标题（用户点名要一致）：
+    //   · 字号 —— sidebar root 设 14px，sectionLabel 不覆盖、直接继承，故这里也 14px
+    //   · 颜色 —— 同一个 --dsw-alias-label-tertiary（分组标题就是这档灰）
+    //   · 左内边距 —— 工作区文字左缘 = root 12px + regionArea(-4px+4px) + sectionHeader 4px，
+    //     折叠头直接在 root padding 内，补 padding-left:4px 即与它同一条左对齐线
+    //   · 行高/高度 —— sectionHeader 是 36px 高、标签 20px 行高，照抄
     '#' + TOGGLE_ID + '{',
     'display:flex;align-items:center;justify-content:space-between;',
-    'width:100%;box-sizing:border-box;margin:2px 0 4px;padding:7px 10px;',
+    'width:100%;box-sizing:border-box;height:36px;margin:2px 0 4px;padding:0 0 0 4px;',
     'background:transparent;border:0;border-radius:8px;',
-    'color:inherit;font:inherit;font-size:13px;line-height:20px;',
-    'text-align:left;cursor:pointer;opacity:.72;transition:background .12s,opacity .12s;',
+    'color:var(--dsw-alias-label-tertiary);font:inherit;font-size:14px;line-height:20px;',
+    'text-align:left;cursor:pointer;transition:background .12s,opacity .12s;',
     '}',
-    '#' + TOGGLE_ID + ':hover{background:rgba(127,127,127,.12);opacity:1;}',
+    '#' + TOGGLE_ID + ':hover{background:rgba(127,127,127,.12);}',
     '#' + TOGGLE_ID + ' .dsh-pt-arrow{font-size:10px;line-height:1;opacity:.8;transition:transform .15s ease;}',
     'html[data-dsh-panel-collapsed="1"] #' + TOGGLE_ID + ' .dsh-pt-arrow{transform:rotate(-90deg);}',
     // 配对 iPhone：精准隐藏（桌面 + 手机都收掉）。该入口是 @linxin666/dsh-remote-bridge

@@ -214,9 +214,12 @@ function stagingWiringViolations(sh, yml) {
   else if (shMirror >= 0 && shGate < shMirror) v.push('第二道门禁跑在 node_modules 镜像之前——量不到内核树');
   const copies = idxAll(yml, 'cp -r dsh-desktop/node_modules "$DEST/node_modules"');
   const gates = idxAll(yml, 'node dsh-tauri/scripts/stage-nsis-path-gate.mjs "$DEST"');
-  if (copies.length !== 5) v.push(`CI staging 的 node_modules 镜像段数应为 5（五个架构），实为 ${copies.length}`);
+  // 段数改判「至少 1 段」而非硬编码 5：2026-11-03 用户点名只发 Windows x64 NSIS，
+  // ARM64 / Portable / Linux / macOS 四个 job 已从 workflow 删除，staging 段随之从 5 降为 1。
+  // 保留「段数 ≥1」是防 staging 段被整体删空后 gates/copies 双零互证成「什么都没检也叫绿」。
+  if (copies.length < 1) v.push('CI staging 解析不到 node_modules 镜像段（staging 段被删空了？）');
   if (gates.length !== copies.length) {
-    v.push(`CI 第二道门禁调用 ${gates.length} 处 ≠ 镜像段数 ${copies.length}（改一处必须五处同改）`);
+    v.push(`CI 第二道门禁调用 ${gates.length} 处 ≠ 镜像段数 ${copies.length}（每段镜像后都必须紧跟门禁）`);
   }
   copies.forEach((c, n) => {
     const next = copies.find((x) => x > c);
@@ -227,13 +230,13 @@ function stagingWiringViolations(sh, yml) {
   return v;
 }
 
-test('接线：stage-payload.sh 与五个架构 CI staging 都在镜像之后调用第二道门禁', () => {
+test('接线：stage-payload.sh 与 CI staging（现仅 Windows x64）都在镜像之后调用第二道门禁', () => {
   const sh = fs.readFileSync(path.join(REPO, 'dsh-tauri', 'scripts', 'stage-payload.sh'), 'utf8');
   const yml = fs.readFileSync(path.join(REPO, '.github', 'workflows', 'tauri-release.yml'), 'utf8');
   assert.deepEqual(stagingWiringViolations(sh, yml), [], '第二道门禁的接线不完整');
 });
 
-test('反证：接线判据对「漏调」「调早了」「五处漏一处」都有捕获力', () => {
+test('反证：接线判据对「漏调」「调早了」「唯一的 staging 段漏调」都有捕获力', () => {
   const sh = fs.readFileSync(path.join(REPO, 'dsh-tauri', 'scripts', 'stage-payload.sh'), 'utf8');
   const yml = fs.readFileSync(path.join(REPO, '.github', 'workflows', 'tauri-release.yml'), 'utf8');
   const call = 'node dsh-tauri/scripts/stage-nsis-path-gate.mjs "$DEST"';
@@ -247,10 +250,10 @@ test('反证：接线判据对「漏调」「调早了」「五处漏一处」�
       + 'mirror_dir "$SRC/node_modules" "$DST/node_modules"');
   assert.ok(stagingWiringViolations(moved, yml).some((x) => /镜像之前/.test(x)),
     '跑在镜像之前必须判红');
-  // 变异 3：五个架构里漏一段（摘掉第一次出现的那条调用）。
+  // 变异 3：唯一的 staging 段漏调（摘掉那条调用）。
   const first = yml.indexOf(call);
   assert.ok(first >= 0, '夹具前提：workflow 里确实有该调用');
   const oneShort = yml.slice(0, first) + yml.slice(first + call.length);
   assert.ok(stagingWiringViolations(sh, oneShort).length,
-    '五处同改漏一处必须判红');
+    '唯一的 staging 段漏调必须判红');
 });
