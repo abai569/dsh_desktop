@@ -168,6 +168,13 @@ const COMPANION_PLUGINS = [
   // 六类事件 + 点击回会话；v1.0.6 起取代壳层「回合完成」通知（壳只保留 watcher
   // 的 active_turns 与 ACP/崩溃通知）。
   { id: 'dsh-notify', name: '@bittersmilezzz/dsh-notify' },
+  // 侧栏精简（本仓库内置）：面板组（插件商店/任务看板/智能体/更多）整组折叠成一行
+  // 可展开的折叠头；手机（≤720px）隐藏 footerActions 整块（工具箱/手机访问/配对
+  // iPhone）；隐藏 DS Bot 工作区行；窄屏强制经典 Agent 模式。
+  // 纯客户端（DOM + CSS），宿主半边 no-op。做成客户端插件而不是壳层 bridge-shim，
+  // 是因为 Tauri 的 initialization_script 只在桌面 webview 执行，手机浏览器与远程
+  // 访问拿不到——客户端插件两处都加载。
+  { id: 'sidebar-compact', name: 'dsh-sidebar-compact' },
 ];
 
 /** 包名 → assets/plugins 下的目录名（去 scope 前缀）。 */

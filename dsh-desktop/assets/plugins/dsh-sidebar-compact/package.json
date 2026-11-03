@@ -1,0 +1,30 @@
+{
+  "name": "dsh-sidebar-compact",
+  "description": "侧栏精简（DSH Desktop 配套插件）：把面板组（插件商店/任务看板/智能体/更多）折叠成一行可展开的折叠头；手机端隐藏工具箱与手机访问；隐藏 DS Bot 工作区行；窄屏强制经典 Agent 模式。纯客户端（浏览器半边注入 CSS+DOS 操作），宿主半边 no-op，桌面壳与手机浏览器同样生效。",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*"
+  },
+  "license": "MIT",
+  "files": [
+    "cordis.patch.yml",
+    "lib",
+    "package.json"
+  ]
+}

@@ -192,6 +192,7 @@ never auto-pushed to stable users by design. See the [release runbook](.github/R
 | `@local/dsh-network-proxy` | 1.0.0 | HTTP proxy row under Settings → General: reads the system proxy and hot-swaps the fetch dispatcher (keeps the upstream `@local/*` name so GitHub updates still line up) | [baizhizzl/dsh-network-proxy](https://github.com/baizhizzl/dsh-network-proxy) · MIT |
 | `dsh-toolbox-ui` | 1.8.2 | MCP / skills toolbox: bottom-right floating panel with an MCP marketplace and skill management (loader id is `mcp-manager-ui`; its host half statically imports `smol-toml`) | [Imzl-zl/dsh-toolbox-ui](https://github.com/Imzl-zl/dsh-toolbox-ui) · MIT |
 | `@bittersmilezzz/dsh-notify` | 0.4.5 | Desktop notifications: six renderer-side Web Notification events plus click-to-session, replacing the shell's "turn complete" toast from v1.0.7 | [bitterSmilezzz/dsh-notify](https://github.com/bitterSmilezzz/dsh-notify) · MIT |
+| `dsh-sidebar-compact` | 0.1.0 | Sidebar slimming: the panel group folds into one expandable row; toolbox / mobile-access hidden on phones; DS Bot workspace row hidden; classic mode forced on narrow screens (loader id `sidebar-compact`, client-only) | In-house · MIT |
 
 > Earlier removals, also outside the 34 registered plugins: `dsh-navbar` (navbar replacement,
 > dropped from the list and its sources deleted in `v0.6.3-beta.3`, commit `ff421ac2`),

@@ -787,6 +787,7 @@ CI 五个架构的 staging 同口径），装机后首次开机由 boot 的插�
 | dsh-session-manager | 0.1.0 | MIT |
 | dsh-settings-groups | 0.1.1 | MIT |
 | dsh-settings-nav-custom | 0.1.1 | MIT |
+| dsh-sidebar-compact | 0.1.0 | MIT |
 | dsh-synapse | 0.3.1 | MIT |
 | dsh-zcode-migrate | 0.1.2 | MIT |
 | dsh-free-search | 0.9.11 | MIT |

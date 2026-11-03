@@ -1,0 +1,12 @@
+# dsh-sidebar-compact 的 bundle 层 patch（自挂载声明）
+#
+# 用途：侧栏精简——面板组折叠、手机端隐藏工具箱/手机访问、隐藏 DS Bot 工作区行、
+# 窄屏强制经典模式。
+#
+# ⚠ 稳定契约：id 是 cordis 补丁按行寻址的键。改 id 会让用户写在
+#   $DSH_HOME/cordis.patch.yml 里的 "- id: sidebar-compact / disabled: true"
+#   覆盖失配成孤儿行（本仓库为同类问题付过学费：dsh-super-injector 的 id 与
+#   bundle 层声明不一致曾造成双登记启动崩溃，issue #104）。不许改。
+- insert:
+    - id: sidebar-compact
+      name: 'dsh-sidebar-compact'
