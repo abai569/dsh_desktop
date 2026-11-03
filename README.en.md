@@ -6,7 +6,7 @@ Not just another DSH shell: we pick the plugins, fix compatibility, integrate th
 Install and go — no Node.js setup, no plugin hunting, no version-conflict archaeology.
 
 > [!IMPORTANT]
-> **v1.0.8 — the bundled kernel moves to 0.2.1-rc.4.** The official dsh runtime ships with **34 selected companion plugins**:
+> **v1.0.8 — the bundled kernel moves to 0.2.1-rc.4.** The official dsh runtime ships with **35 selected companion plugins**:
 > **DeepSeek-Bot** (main bot + long-lived bots + group chats), the Better Sidebar file workbench, Free Search,
 > the plugin shop, Prompt Optimizer, the conversation map, desktop notifications, the MCP toolbox, and more —
 > all working out of the box, with one place to inspect, toggle and update them under **Settings → Plugins → Built-in plugins**.
@@ -28,7 +28,7 @@ DSH Desktop does that work for you: **curated, integrated, shipped in the box.**
 
 ### Curated, not collected
 
-- **34 companion plugins, each one chosen** — we optimise for quality, not count. Every bundled plugin gets a host-compatibility check, a licence review and a real boot test; the roster and evidence live in [the inventory](dsh-desktop/docs/builtin-plugins-inventory.md).
+- **35 companion plugins, each one chosen** — we optimise for quality, not count. Every bundled plugin gets a host-compatibility check, a licence review and a real boot test; the roster and evidence live in [the inventory](dsh-desktop/docs/builtin-plugins-inventory.md).
 - **One installer, one complete experience** — Bot team and group chats (DeepSeek-Bot), the Better Sidebar file workbench, free multi-engine search (Free Search), the plugin shop, prompt optimisation, the conversation map, desktop notifications, the MCP / skills toolbox, balance and cost, session archiving, peak/off-peak price guard — all there after install.
 - **One place to manage them** — **Settings → Plugins → Built-in plugins** lists every bundled plugin with its version, an on/off switch and an update check. Update sources and exclusions come from one table, so the same plugin cannot show different states in different entry points.
 - **Traceable upstreams** — every bundled plugin records its source repository, version and licence. Third-party licences are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); compatibility verdicts and test evidence are in §5 of the inventory.
@@ -64,7 +64,7 @@ DSH Desktop does that work for you: **curated, integrated, shipped in the box.**
 | --- | --- | --- |
 | Startup | Manual Node.js install & CLI | Double-click, bundled runtime |
 | Surface | Browser tab | Native window · frameless dark glass |
-| Plugins | Find, install and reconcile each one yourself | **34 curated plugins in the box**, with one place to inspect / toggle / update |
+| Plugins | Find, install and reconcile each one yourself | **35 curated plugins in the box**, with one place to inspect / toggle / update |
 | Sessions | Archive only | Archive / restore / delete + conversation map |
 | Balance | None | Live "this turn cost · balance" + OpenCode Go |
 | Desktop | None | Tray / native notifications / file workbench / Bot group chats |
@@ -86,7 +86,7 @@ Get the latest **1.0.8** build from [GitHub Releases](https://github.com/myYangy
 
 - **Upgrade in place**: the installer finds the old directory, keeps your data and reinstalls to the same location; profiles, sessions and plugin settings are preserved.
 - **Portable build**: Windows also ships `DSH-Desktop-Portable-1.0.8-win-x64.zip`; unzip and run, with data stored in a `data\` folder next to the executable.
-- **First launch**: the 34 curated plugins are synced from the bundled `assets/plugins` into the profile. Afterwards, inspect, toggle and update them under **Settings → Plugins → Built-in plugins**.
+- **First launch**: the 35 curated plugins are synced from the bundled `assets/plugins` into the profile. Afterwards, inspect, toggle and update them under **Settings → Plugins → Built-in plugins**.
 - **Data locations**: Windows installer `%APPDATA%\DSH Desktop\`, portable build `data\` next to the executable; macOS `~/Library/Application Support/DSH Desktop/`. Set `DSH_HOME` to override the dsh config directory.
 
 > Since v1.0.0 the project no longer mirrors code or release assets to Gitee; older Gitee releases remain as an archive only.
@@ -142,7 +142,7 @@ never auto-pushed to stable users by design. See the [release runbook](.github/R
 
 ## 🧩 Bundled Plugin Ecosystem
 
-**34 companion plugins are registered in total.** Under the v1.0.0 bundled line (user decision, 2026-10-08) their sources ship **inside the installer**: the delivery gate mirrors `assets/plugins` as a whole, and the first boot syncs it into the profile, so everything below works out of the box (on 2026-10-22 the side session `side-session` was removed and DeepSeek-Bot (`bot`) was added, keeping the roster at 34; see §4 of [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the delivery gates and the full third-party list). The table below follows the registration order of `scripts/lib/companion-plugins.js`; package names and versions are read from each plugin's `package.json`. The "Source / license" column only reports what each package says about itself — per-plugin upstream reachability and licence text are audited in [the inventory](dsh-desktop/docs/builtin-plugins-inventory.md) §3, and the `0.2.1-rc.4` host compatibility verdicts in §5.
+**35 companion plugins are registered in total.** Under the v1.0.0 bundled line (user decision, 2026-10-08) their sources ship **inside the installer**: the delivery gate mirrors `assets/plugins` as a whole, and the first boot syncs it into the profile, so everything below works out of the box (on 2026-10-22 the side session `side-session` was removed and DeepSeek-Bot (`bot`) was added, keeping the roster at 34; on 2026-11-03 the sidebar-slimming `sidebar-compact` was added, bringing the roster to 35; see §4 of [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the delivery gates and the full third-party list). The table below follows the registration order of `scripts/lib/companion-plugins.js`; package names and versions are read from each plugin's `package.json`. The "Source / license" column only reports what each package says about itself — per-plugin upstream reachability and licence text are audited in [the inventory](dsh-desktop/docs/builtin-plugins-inventory.md) §3, and the `0.2.1-rc.4` host compatibility verdicts in §5.
 
 > [!NOTE]
 > **Trimmed in v1.0.0: bundled plugins went from 39 down to 28** (the 11 were named for removal by a user on 2026-10-07).
@@ -194,7 +194,7 @@ never auto-pushed to stable users by design. See the [release runbook](.github/R
 | `@bittersmilezzz/dsh-notify` | 0.4.5 | Desktop notifications: six renderer-side Web Notification events plus click-to-session, replacing the shell's "turn complete" toast from v1.0.7 | [bitterSmilezzz/dsh-notify](https://github.com/bitterSmilezzz/dsh-notify) · MIT |
 | `dsh-sidebar-compact` | 0.1.0 | Sidebar slimming: the panel group folds into one expandable row; toolbox / mobile-access hidden on phones; DS Bot workspace row hidden; classic mode forced on narrow screens (loader id `sidebar-compact`, client-only) | In-house · MIT |
 
-> Earlier removals, also outside the 34 registered plugins: `dsh-navbar` (navbar replacement,
+> Earlier removals, also outside the 35 registered plugins: `dsh-navbar` (navbar replacement,
 > dropped from the list and its sources deleted in `v0.6.3-beta.3`, commit `ff421ac2`),
 > `zat-dsh-engine` (the previous built-in marketplace, retired even earlier) and
 > `dsh-reasoning-effort` (reasoning-effort selector, retired 2026-10-17 with the 0.2.1 kernel
