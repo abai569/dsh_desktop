@@ -272,10 +272,26 @@ test('无 panelList 时不炸（panels 为空的内核形态）', () => {
 test('底部区块间距压缩：footArea / footerActions / settingsArea 四处都收紧', () => {
   const css = boot().core.CSS;
   assert.match(css, /\[class\*="_footArea"\]\{margin-top:2px/, 'footArea 上间距应收紧');
-  assert.match(css, /\[class\*="_footerActions"\]\{gap:0/, 'footerActions 的 gap 应归零');
-  assert.match(css, /\[class\*="_footerActions"\] button\{min-height:30px/,
-    'footer 内各插件自带按钮应压到 30px 紧凑行高');
+  assert.ok(css.includes('[class*="_footArea"] [class*="_footerActions"]{gap:0 !important;'),
+    'footerActions 的 gap 应归零，且必须挂在 _footArea 下');
+  assert.ok(css.includes('[class*="_footArea"] [class*="_footerActions"] button{min-height:30px !important;'),
+    'footer 内各插件自带按钮应压到 30px，且必须挂在 _footArea 下');
   assert.match(css, /\[class\*="_settingsArea"\]\{padding-top:0/, '余额行内边距应归零');
+});
+
+test('反证：间距规则不得裸写 _footerActions（它不是侧栏专属）', () => {
+  // v1.1.1 事故：`_footerActions` 在 dsh-client-ui-user-questions 里也有同名类，
+  // 裸写会选到对话里的提问卡片、把它的按钮一起压塌。
+  // 唯一允许的形态是「挂在 _footArea 下」，故任何不以 _footArea 限定的出现都判红。
+  const css = boot().core.CSS;
+  const hits = [...css.matchAll(/\[class\*="_footerActions"\]/g)];
+  assert.ok(hits.length >= 2, '夹具前提：确实存在 footerActions 选择器');
+  for (const hit of hits) {
+    const before = css.slice(Math.max(0, hit.index - 40), hit.index);
+    assert.ok(before.includes('[class*="_footArea"]'),
+      '每处 _footerActions 都必须带 _footArea 祖先限定，裸写会误伤 user-questions：' +
+      css.slice(hit.index, hit.index + 60));
+  }
 });
 
 test('轮次导航器强制常驻：覆盖内核 TurnNavigator 的 900px 容器查询', () => {
@@ -285,11 +301,16 @@ test('轮次导航器强制常驻：覆盖内核 TurnNavigator 的 900px 容器�
   const css = boot().core.CSS;
   // 用字符串断言而不是正则：`[class*="_frame"]` 在正则里是字符类，必须逐字符转义，
   // 极易在生成/复制时丢掉反斜杠而静默变成「匹配任意单字符」的假判据（本次就踩了）。
-  assert.ok(css.includes('[class*="_frame"]:has([class*="_marks"]){display:block !important;}'),
-    '必须有 :has() 精确锁定的 TurnNavigator 常驻规则');
-  // 反证：不得出现不带 :has 限定的裸 _frame 选择器（那会误伤 attachment 等其它 _frame 组件）
+  assert.ok(css.includes('[class*="_frame"]:has(> [class*="_scroller"] > [class*="_marks"]){display:block !important;}'),
+    '必须有「直接子代限定」的 TurnNavigator 常驻规则');
+  // 反证（v1.1.1 灾难现场）：`:has([class*="_marks"])` 这种后代反查会命中原页面框架
+  // `.pI_x6G_frame`（AppFrame：display:grid + grid-template-rows），被压成 block 后
+  // 会话区与输入框一起塌掉。必须用 `> scroller > marks` 锁死层数。
+  assert.ok(!css.includes(':has([class*="_marks"])'),
+    ':has() 不得用后代反查，必须写成 :has(> [class*="_scroller"] > [class*="_marks"])');
+  // 反证：不得出现不带 :has 限定的裸 _frame 选择器
   assert.ok(!css.includes('[class*="_frame"]{display:block'),
-    '不得使用不带 :has(_marks) 限定的裸 _frame 选择器');
+    '不得使用不带 :has 限定的裸 _frame 选择器');
 });
 
 test('反证：DS Bot 行改为保留显示，不得再有隐藏规则', () => {

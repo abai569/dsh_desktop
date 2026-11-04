@@ -73,31 +73,45 @@
     // 按属性定位比按文案或样式类都稳。用户反馈它「占了很大高度」且不用 iOS 内测 App，
     // 故桌面端也一并隐藏（手机端另有 footerActions 整块隐藏兜底）。
     'button[data-dsh-plugin="remote-bridge"][data-dsh-part="entry"]{display:none !important;}',
-    // 手机：整块隐藏 footer.action（工具箱 / 手机访问）
+    // 手机：整块隐藏侧栏的 footer.action（工具箱 / 手机访问）。
+    // 同样必须挂 `_footArea` 限定——`_footerActions` 在 dsh-client-ui-user-questions
+    // 里也有同名类，裸写会把手机端对话里的提问卡片底部按钮一起隐藏（v1.1.1 同族缺陷）。
     '@media (max-width: ' + MOBILE_MAX + 'px){',
-    '  [class*="_footerActions"]{display:none !important;}',
+    '  [class*="_footArea"] [class*="_footerActions"]{display:none !important;}',
     '  [class*="_regionArea"]{padding-bottom:8px !important;}',
     '}',
     // 底部区块收紧（2026-11-04 用户点名：DS Bot / 工具箱 / 手机访问 / 余额这几项之间空太多）。
     // DS Bot 行改为**保留显示**，只压间距，不再隐藏。
-    // 四个来源：footArea 与上方工作区列表的间距、footerActions 内部各按钮的上下留白、
-    // footerActions 与 settingsArea（余额行）之间、以及 settingsArea 自身的内边距。
+    //
+    // ⚠ 作用域必须挂在 _footArea 下（v1.1.1 事故）：`_footerActions` **不是侧栏专属**，
+    // dsh-client-ui-user-questions 也有同名类（对话里的提问卡片）。裸写
+    // `[class*="_footerActions"]{...}` 会把提问卡片的按钮一起压塌。侧栏的真实层级是
+    //   div.footArea > [div.footerActions, div.settingsArea]
+    // （dsh-client-ui-sidebar/lib/client.js 的 footArea 渲染点，两个子容器都是直接子代），
+    // 所以加 `_footArea` 祖先限定即可精确落到侧栏，user-questions 没有 footArea 天然排除。
     '[class*="_footArea"]{margin-top:2px !important;padding-top:0 !important;}',
     '[class*="_footArea"] > *{margin-top:0 !important;margin-bottom:0 !important;}',
-    '[class*="_footerActions"]{gap:0 !important;padding-top:0 !important;padding-bottom:0 !important;}',
-    '[class*="_footerActions"] > *{margin-top:0 !important;margin-bottom:0 !important;padding-top:0 !important;padding-bottom:0 !important;}',
+    '[class*="_footArea"] [class*="_footerActions"]{gap:0 !important;padding-top:0 !important;padding-bottom:0 !important;}',
+    '[class*="_footArea"] [class*="_footerActions"] > *{margin-top:0 !important;margin-bottom:0 !important;padding-top:0 !important;padding-bottom:0 !important;}',
     // 各插件自带的 footer 按钮：统一压成紧凑行高（原样式多为 36-40px，这里收到 30px）。
-    '[class*="_footerActions"] button{min-height:30px !important;height:30px !important;padding-top:0 !important;padding-bottom:0 !important;margin-top:0 !important;margin-bottom:0 !important;}',
+    '[class*="_footArea"] [class*="_footerActions"] button{min-height:30px !important;height:30px !important;padding-top:0 !important;padding-bottom:0 !important;margin-top:0 !important;margin-bottom:0 !important;}',
+    // _settingsArea 经全仓核对是侧栏独有（只有 dsh-client-ui-sidebar 命中），无需再加祖先限定。
     '[class*="_settingsArea"]{padding-top:0 !important;padding-bottom:0 !important;margin-top:0 !important;}',
     // 轮次导航器（内核 TurnNavigator）常驻：内核有一条容器查询
     //   @container (width<=900px){ .eGxaPq_frame{display:none} }
     // 容器是 .eGxaPq_slot（left:0;right:0 + container-type:inline-size），量的是**中栏宽度**，
     // 于是窗口稍窄（中栏跌破 900px）整条消息刻度就消失——用户 2026-11-04 报「窗口小了就没了」。
-    // 这里用 !important 压过那条（它不带 important，important 在任意作用域都优先），
-    // 选择器用 :has() 锁「含 _marks 的 _frame」，只有 TurnNavigator 命中，
-    // 不会误伤其它带 _frame 的组件（attachment 等）。WebView2 = Chromium，:has() 可用。
-    // 代价：窄窗口下它 absolute 盖在中栏右侧 12px 处，可能压住长行文本末尾。
-    '[class*="_frame"]:has([class*="_marks"]){display:block !important;}',
+    //
+    // ⚠⚠ v1.1.1 灾难性回归就出在这一条，写法必须严格照下面：
+    //   错：`[class*="_frame"]:has([class*="_marks"])`  —— :has() 是**后代反查**，
+    //       `_marks` 在会话区里，于是**任何包含会话区的祖先都命中**，包括内核页面根框架
+    //       `.pI_x6G_frame`（dsh-client-ui-layout 的 AppFrame：display:grid +
+    //       grid-template-rows:minmax(0,1fr) auto）。被强制成 display:block 后两行网格失效，
+    //       会话区与输入框一起塌掉 —— 用户看到「下面全没了」。
+    //   对：用**直接子代**限定锁死层数。TurnNavigator 的真实层级是
+    //       .slot > .frame > .scroller > .marks > .mark，所以 `> scroller > marks` 只对
+    //       这一层成立，AppFrame 之类远祖的子代不是 scroller，永不命中。
+    '[class*="_frame"]:has(> [class*="_scroller"] > [class*="_marks"]){display:block !important;}',
   ].join('\n');
 
   function ensureCss() {
