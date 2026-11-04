@@ -313,6 +313,32 @@ test('轮次导航器强制常驻：覆盖内核 TurnNavigator 的 900px 容器�
     '不得使用不带 :has 限定的裸 _frame 选择器');
 });
 
+test('手机端侧栏入口去重：隐藏 dsh-pocket 的浮动 fab，只留头部 toggle', () => {
+  // 2026-11-04 实机：新会话（hero 阶段）左上角出现两个一模一样的侧栏图标上下堆叠。
+  // dsh-pocket 两套入口本该互斥，但内核 phase 是三态 settling/hero/active，
+  // hero 阶段头部 toggle 仍渲染、fab 也判定为「非 active」→ 两个都在。
+  const css = boot().core.CSS;
+  assert.ok(css.includes('[data-mobile-nav="fab"]{display:none !important;}'),
+    '必须隐藏 dsh-pocket 的浮动 fab，否则 hero 阶段与头部 toggle 重复');
+  // 断点必须与 dsh-pocket 自己的 MOBILE_QUERY（max-width: 1023px）一致，
+  // 写成 720px 会在 768~1023 的窄桌面/平板上漏掉重复图标。
+  assert.ok(css.includes('@media (max-width: 1023px)'),
+    '去重规则必须落在 1023px 断点内（与 dsh-pocket 的 MOBILE_QUERY 同源）');
+  // 反证：只许隐藏 fab，绝不能顺手隐藏 toggle（那是保留下来的唯一入口）
+  assert.ok(!css.includes('[data-mobile-nav="toggle"]{display:none'),
+    '不得隐藏 [data-mobile-nav="toggle"] —— 它是保留的唯一侧栏入口');
+});
+
+test('抽屉滑入用缓出曲线（用户反馈默认过渡生硬）', () => {
+  const css = boot().core.CSS;
+  assert.ok(css.includes('[data-mobile-nav="frame"] > :first-child{'),
+    '必须有抽屉容器的过渡覆盖');
+  assert.ok(css.includes('cubic-bezier(.22,1,.36,1)'),
+    '过渡曲线应换成缓出 cubic-bezier(.22,1,.36,1)');
+  assert.ok(css.includes('transition-duration:.26s'),
+    '过渡时长应显式给定（.26s）');
+});
+
 test('反证：DS Bot 行改为保留显示，不得再有隐藏规则', () => {
   // 2026-11-04 用户改口：DS Bot 留着不隐藏，只压间距。
   const css = boot().core.CSS;

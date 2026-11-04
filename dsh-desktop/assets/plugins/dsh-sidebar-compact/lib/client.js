@@ -80,6 +80,29 @@
     '  [class*="_footArea"] [class*="_footerActions"]{display:none !important;}',
     '  [class*="_regionArea"]{padding-bottom:8px !important;}',
     '}',
+    // 手机端侧栏切换按钮去重（2026-11-04 用户报「两个一样的图标上下堆叠、不好点」）。
+    //
+    // dsh-pocket 的移动端有两套侧栏入口，本该互斥：
+    //   ① MobileNavToggle  → [data-mobile-nav="toggle"]，绝对定位在会话头部左上角
+    //   ② MobileNavOverlay → [data-mobile-nav="fab"]，浮动按钮，按 design 只给「没有会话头部」
+    //      的阶段用（其源码：`setFabVisible(document.querySelector('[data-phase="active"]') === null)`）
+    // 但内核 conversation 的 phase 是三态 `settling / hero / active`
+    // （dsh-client-ui-conversation：`const phase = settling ? "settling" : hero ? "hero" : "active"`），
+    // hero（新会话/空白）阶段头部 slot 仍渲染 → toggle 在，fab 也判定为「非 active」→ 在，
+    // 于是左上角出现两个相同图标。
+    //
+    // 处置：统一只用头部那个 toggle，隐藏 fab。依据是 hero 阶段 toggle 实测在位
+    // （用户截图里两个都在，下方那个就是 toggle）。这里只做 display:none，
+    // 命中对象是 28px 的按钮，**不碰任何布局容器**——与 v1.1.1 那次 :has 打塌 AppFrame 的
+    // 错误形态无关；若日后 dsh-pocket 改名，最坏结果只是这行失效、两个图标回来，不会更糟。
+    '@media (max-width: 1023px){',
+    '  [data-mobile-nav="fab"]{display:none !important;}',
+    // 抽屉滑入改缓出曲线：默认过渡在手机上一顿一顿（用户反馈「点开动画生硬」）。
+    '  [data-mobile-nav="frame"] > :first-child{',
+    '    transition-duration:.26s !important;',
+    '    transition-timing-function:cubic-bezier(.22,1,.36,1) !important;',
+    '  }',
+    '}',
     // 底部区块收紧（2026-11-04 用户点名：DS Bot / 工具箱 / 手机访问 / 余额这几项之间空太多）。
     // DS Bot 行改为**保留显示**，只压间距，不再隐藏。
     //
