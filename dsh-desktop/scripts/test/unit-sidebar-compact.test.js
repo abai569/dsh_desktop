@@ -339,6 +339,24 @@ test('抽屉滑入用缓出曲线（用户反馈默认过渡生硬）', () => {
     '过渡时长应显式给定（.26s）');
 });
 
+test('会话头部去掉 Bot 头像鲸鱼（与展开按钮重叠）', () => {
+  // 2026-11-05 实机：点进会话后左上角「鲸鱼 + 展开按钮」重叠——dsh-pocket 的
+  // [data-mobile-nav="toggle"] 绝对定位 left:8px/top:12px，正好压在
+  // ds-bot 会话头部 pill 里那个 24px 的 BotAvatar 上。
+  // 用户明确要求「那个鱼可以不要，只要展开的按钮」。
+  const css = boot().core.CSS;
+  assert.ok(css.includes('button.bt-pill .bt-mark{display:none !important;}'),
+    '必须隐藏会话头部 pill 里的 Bot 头像鲸鱼');
+  // 反证（逐行判选择器开头，比正则可靠——CSS 每条规则都从行首的选择器起）：
+  //   · 裸 .bt-mark 会连 Bot 列表(bt-tile)、侧栏品牌(bt-brand)的头像一起隐藏
+  //   · 裸 .bt-pill .bt-mark 会误伤 Bot 对话详情里那个 <span class="bt-pill">（内含 ⇄）
+  const ruleHeads = css.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('/*'));
+  assert.ok(!ruleHeads.some((l) => l.startsWith('.bt-mark{')),
+    '不得裸写 .bt-mark（会误伤 Bot 列表与侧栏品牌头像）');
+  assert.ok(!ruleHeads.some((l) => l.startsWith('.bt-pill .bt-mark{')),
+    '不得裸写 .bt-pill .bt-mark（会误伤 Bot 对话详情里的同名 span pill）');
+});
+
 test('反证：DS Bot 行改为保留显示，不得再有隐藏规则', () => {
   // 2026-11-04 用户改口：DS Bot 留着不隐藏，只压间距。
   const css = boot().core.CSS;

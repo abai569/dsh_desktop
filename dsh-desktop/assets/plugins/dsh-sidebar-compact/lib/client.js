@@ -102,6 +102,15 @@
     '    transition-duration:.26s !important;',
     '    transition-timing-function:cubic-bezier(.22,1,.36,1) !important;',
     '  }',
+    // 会话头部 pill 里的 Bot 头像（鲸鱼）与 dsh-pocket 的展开按钮重叠
+    // （后者绝对定位 left:8px/top:12px，正好压在这个 24px 头像上）。
+    // 用户 2026-11-05 明确要求「那个鱼可以不要，只要展开的按钮」。
+    //
+    // 用 `button.bt-pill` 精确区分：会话头部的 pill 由 ds-bot 渲染成 <button>
+    // （ds-bot client.js 第 6859-6869 行，内含 BotAvatar size:24），
+    // 而 Bot 对话详情里同名的 pill 是 <span>（第 10118-10124 行，内含 ⇄），
+    // 那个不能动。选择器末端是 24px 的头像 span，不碰布局容器。
+    '  button.bt-pill .bt-mark{display:none !important;}',
     '}',
     // 底部区块收紧（2026-11-04 用户点名：DS Bot / 工具箱 / 手机访问 / 余额这几项之间空太多）。
     // DS Bot 行改为**保留显示**，只压间距，不再隐藏。
