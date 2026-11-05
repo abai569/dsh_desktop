@@ -339,22 +339,23 @@ test('抽屉滑入用缓出曲线（用户反馈默认过渡生硬）', () => {
     '过渡时长应显式给定（.26s）');
 });
 
-test('会话头部去掉 Bot 头像鲸鱼（与展开按钮重叠）', () => {
-  // 2026-11-05 实机：点进会话后左上角「鲸鱼 + 展开按钮」重叠——dsh-pocket 的
-  // [data-mobile-nav="toggle"] 绝对定位 left:8px/top:12px，正好压在
-  // ds-bot 会话头部 pill 里那个 24px 的 BotAvatar 上。
-  // 用户明确要求「那个鱼可以不要，只要展开的按钮」。
+test('侧栏折叠态去掉品牌鲸鱼（与折叠按钮重叠）', () => {
+  // 2026-11-05 用户实测 DOM 定位到真身：
+  //   #root > … > div.pI_x6G_sidebarCol > … > div.hHd-Xa_logoRow > button > svg.hHd-Xa_panelIcon
+  // 侧栏 logoRow 里同时有品牌 mark（hHd-Xa_brandMark = 鲸鱼）与折叠按钮
+  // （hHd-Xa_toggle，position:fixed; left:12px）。侧栏折叠时内核把该行压成 0 高
+  // （[data-windows-titlebar] .hHd-Xa_collapsed .hHd-Xa_logoRow{height:0}），
+  // 但 brandMark 作为溢出内容仍画在原处 → 与 fixed 的折叠按钮叠在一起。
+  // 用户要求「那个鱼可以不要，只要展开的按钮」。
   const css = boot().core.CSS;
-  assert.ok(css.includes('button.bt-pill .bt-mark{display:none !important;}'),
-    '必须隐藏会话头部 pill 里的 Bot 头像鲸鱼');
-  // 反证（逐行判选择器开头，比正则可靠——CSS 每条规则都从行首的选择器起）：
-  //   · 裸 .bt-mark 会连 Bot 列表(bt-tile)、侧栏品牌(bt-brand)的头像一起隐藏
-  //   · 裸 .bt-pill .bt-mark 会误伤 Bot 对话详情里那个 <span class="bt-pill">（内含 ⇄）
-  const ruleHeads = css.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('/*'));
-  assert.ok(!ruleHeads.some((l) => l.startsWith('.bt-mark{')),
-    '不得裸写 .bt-mark（会误伤 Bot 列表与侧栏品牌头像）');
-  assert.ok(!ruleHeads.some((l) => l.startsWith('.bt-pill .bt-mark{')),
-    '不得裸写 .bt-pill .bt-mark（会误伤 Bot 对话详情里的同名 span pill）');
+  assert.ok(css.includes('[class*="_brandMark"]{display:none !important;}'),
+    '必须按后缀隐藏侧栏 logoRow 里的品牌鲸鱼 mark');
+  // 反证一：不许写死 hash 前缀（hHd-Xa_ 会随内核换代变，写死就是下一版静默失效）
+  assert.ok(!css.includes('.hHd-Xa_brandMark'),
+    '不得写死 hHd-Xa_ 前缀，必须用 [class*="_brandMark"]');
+  // 反证二：之前误定位到 ds-bot 的 button.bt-pill .bt-mark，已撤回，不得再回来
+  assert.ok(!css.includes('button.bt-pill'),
+    '不得再隐藏 ds-bot 会话头部 pill 里的 Bot 头像（那是误定位，已撤销）');
 });
 
 test('反证：DS Bot 行改为保留显示，不得再有隐藏规则', () => {

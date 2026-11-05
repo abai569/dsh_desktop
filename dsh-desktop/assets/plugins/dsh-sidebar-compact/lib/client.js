@@ -102,15 +102,19 @@
     '    transition-duration:.26s !important;',
     '    transition-timing-function:cubic-bezier(.22,1,.36,1) !important;',
     '  }',
-    // 会话头部 pill 里的 Bot 头像（鲸鱼）与 dsh-pocket 的展开按钮重叠
-    // （后者绝对定位 left:8px/top:12px，正好压在这个 24px 头像上）。
-    // 用户 2026-11-05 明确要求「那个鱼可以不要，只要展开的按钮」。
+    // 侧栏顶部的品牌鲸鱼（用户 2026-11-05 点名「那个鱼可以不要，只要展开的按钮」）。
     //
-    // 用 `button.bt-pill` 精确区分：会话头部的 pill 由 ds-bot 渲染成 <button>
-    // （ds-bot client.js 第 6859-6869 行，内含 BotAvatar size:24），
-    // 而 Bot 对话详情里同名的 pill 是 <span>（第 10118-10124 行，内含 ⇄），
-    // 那个不能动。选择器末端是 24px 的头像 span，不碰布局容器。
-    '  button.bt-pill .bt-mark{display:none !important;}',
+    // 真正的位置由用户实测 DOM 确认（不是之前猜的 bt-pill / HeroFish / brand-official）：
+    //   #root > … > div.pI_x6G_sidebarCol > … > div.hHd-Xa_logoRow > button > svg.hHd-Xa_panelIcon
+    // 也就是侧栏自己的 logoRow：里面有品牌 mark（hHd-Xa_brandMark = 鲸鱼）
+    // 与折叠按钮（hHd-Xa_toggle，`position:fixed; left:12px; z-index:30`）。
+    // 侧栏折叠时内核把整行压成 0 高：
+    //   [data-windows-titlebar] .hHd-Xa_collapsed .hHd-Xa_logoRow{height:0}
+    // 但 brandMark 是 inline-flex 的溢出内容，仍画在原地，而折叠按钮 fixed 钉在左上
+    // → 两者叠在同一个像素点上，这就是「鲸鱼和按钮重叠」。
+    //
+    // `_brandMark` 全仓只出现在 dsh-client-ui-sidebar（已全量扫过），可安全按后缀匹配。
+    '  [class*="_brandMark"]{display:none !important;}',
     '}',
     // 底部区块收紧（2026-11-04 用户点名：DS Bot / 工具箱 / 手机访问 / 余额这几项之间空太多）。
     // DS Bot 行改为**保留显示**，只压间距，不再隐藏。
